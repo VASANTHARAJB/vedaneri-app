@@ -1,0 +1,7 @@
+fastapi
+uvicorn[standard]
+apscheduler
+pymysql
+cryptography
+httpx
+python-dotenv

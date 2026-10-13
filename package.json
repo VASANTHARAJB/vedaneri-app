@@ -1,0 +1,25 @@
+{
+  "name": "vedaneri",
+  "private": true,
+  "version": "0.1.0",
+  "description": "vedaneri.org revamp: website, CMS portal, API, Python worker",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web,cms -c yellow,cyan,magenta \"npm:dev:api\" \"npm:dev:web\" \"npm:dev:cms\"",
+    "dev:api": "npm run dev -w @vedaneri/api",
+    "dev:web": "npm run dev -w @vedaneri/web",
+    "dev:cms": "npm run dev -w @vedaneri/cms",
+    "dev:worker": "node scripts/worker.mjs",
+    "build": "npm run build -ws --if-present",
+    "typecheck": "npm run typecheck -ws --if-present",
+    "db:up": "docker compose -f infra/docker-compose.yml --env-file .env up -d mysql",
+    "db:down": "docker compose -f infra/docker-compose.yml --env-file .env down",
+    "db:migrate": "npm run db:migrate -w @vedaneri/api",
+    "db:seed": "npm run db:seed -w @vedaneri/api"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.6"
+  }
+}
