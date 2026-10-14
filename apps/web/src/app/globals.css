@@ -2,4 +2,33 @@
 @tailwind components;
 @tailwind utilities;
 
-body { @apply bg-white text-charcoal; }
+@layer base {
+  html { scroll-behavior: smooth; }
+  body { @apply bg-white font-sans text-[1.0625rem] leading-relaxed text-charcoal antialiased; }
+  html[lang='ta'] body { line-height: 1.8; } /* Tamil needs a little more line height */
+  h1, h2, h3, h4 { @apply font-serif font-bold leading-tight text-maroon; }
+  /* Tamil capitals are visually larger than Latin, so the Tamil brand name is set smaller */
+  html[lang='ta'] .brand-name { font-size: 1.4rem; }
+  /* Tamil has no capital letters and must not be letter-spaced: keep the hero title natural */
+  html[lang='ta'] .hero-title { letter-spacing: 0; text-transform: none; font-size: clamp(2rem, 4.4vw, 3.75rem); line-height: 1.2; }
+  /* Tamil letters are taller: keep section headings a little smaller so they stay on fewer lines */
+  html[lang='ta'] h2.font-display { font-size: clamp(1.75rem, 3.2vw, 2.5rem); line-height: 1.25; }
+  :focus-visible { outline: 2px solid theme('colors.saffron'); outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  /* Brighter light, for photos that are already bright (the founder portrait) */
+.hand-glow-bright { background: radial-gradient(circle, rgba(255, 255, 255, 0.95) 0%, rgba(255, 224, 160, 0.65) 32%, rgba(255, 224, 160, 0) 70%); }
+/* Light on the raised palms in the hero photo */
+.hand-glow {
+  background: radial-gradient(circle, rgba(255, 240, 210, 0.75) 0%, rgba(217, 119, 6, 0.55) 30%, rgba(217, 119, 6, 0) 70%);
+  mix-blend-mode: screen;
+  animation: hand-glow 3.6s ease-in-out infinite;
+}
+.hand-star { animation: hand-twinkle 2.6s ease-in-out infinite; opacity: 0; filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.95)); }
+@keyframes hand-glow { 0%, 100% { opacity: 0.55; transform: scale(0.85); } 50% { opacity: 1; transform: scale(1.15); } }
+@keyframes hand-twinkle { 0%, 100% { opacity: 0; transform: scale(0.3) rotate(0deg); } 50% { opacity: 1; transform: scale(1) rotate(45deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .hand-glow { animation: none; opacity: 0.7; }
+  .hand-star { animation: none; opacity: 0; }
+}
+}
+

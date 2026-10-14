@@ -1,1 +1,272 @@
-{ "site": { "name": "Vedaneri" }, "nav": { "home": "Home", "about": "About", "sevas": "Sevas", "donate": "Donate", "events": "Events", "audio": "Discourses", "magazine": "Magazine", "camps": "Camps", "contact": "Contact" } }
+{
+  "site": {
+    "name": "Vedaneri",
+    "tagline": "Sri Swami Chidbhavananda Ashramam"
+  },
+  "nav": {
+  "home": "Home",
+  "about": "About",
+  "omkarananda": "Pujyasri Omkarananda MahaSwamigal",
+  "ashramam": "Ashramam",
+  "adhishtanam": "Adhishtanam",
+  "vidyapitham": "Vidyapitham",
+  "discourses": "Discourses",
+  "audio": "Audio",
+  "video": "Video",
+  "albums": "Albums",
+  "seva": "Seva",
+  "donations": "Donations",
+  "magazine": "Magazine",
+  "camps": "Camps",
+  "login": "Login"
+},
+  "a11y": {
+    "mainNavigation": "Main navigation",
+    "language": "Language",
+    "openMenu": "Open menu",
+    "closeMenu": "Close menu"
+  },
+  "hero": {
+    "pill": "Pujyasri Swami Omkarananda Mahaswamigal's",
+    "title": [
+      "Sri Swami",
+      "Chidbhavananda",
+      "Ashramam"
+    ],
+    "text": "Immerse yourself in the traditional wisdom of Upanishads, Bhagavad Gita, and classical Tamil scriptures preserved under the grace of Pujyasri Swami Omkarananda Mahaswamigal.",
+    "primary": "Book Seva / Donate",
+    "secondary": "Explore Discourses",
+    "photoAlt": "A swami standing before a decorated deity idol"
+  },
+  "footer": {
+    "name": "Vedapuri Ashramam",
+    "address": "Sri Swami Chidbhavananda Ashramam, Vedapuri, Chatrapatti Road, Theni - 625 531, Tamil Nadu, India.",
+    "linksTitle": "Quick Links",
+    "links": [
+      {
+        "label": "Home",
+        "href": ""
+      },
+      {
+        "label": "About Lineage",
+        "href": "/about"
+      },
+      {
+        "label": "Video Discourses",
+        "href": "/video"
+      },
+      {
+        "label": "Seva Sankalpam",
+        "href": "/sevas"
+      },
+      {
+        "label": "Corpus Donations",
+        "href": "/donate"
+      }
+    ],
+    "taxTitle": "Tax Exemption & Trust",
+    "tax": "All donations to the ashram are exempt under Section 80G of the Income Tax Act, 1961. Receipts will be sent instantly via email.",
+    "trusts": "Vedanta Sasthra Prachara Trust (Reg. 226/1992) · Sri Dakshinamurti Seva Samiti (Reg. 500/2002)",
+    "copyright": "Sri Swami Chidbhavananda Ashramam Trust. Designed for Vedaneri Preservation.",
+    "motto": "Dharma Rakshati Rakshitah",
+    "phone": "Phone",
+    "email": "Email",
+    "youtube": "YouTube",
+    "whatsapp": "WhatsApp"
+  },
+  "guides": {
+    "title": "Our Spiritual Guides",
+    "subtitle": "Meet the resident Acharyas sustaining the sacred traditional lineage of Vedapuri.",
+    "specLabel": "Primary specialization",
+    "viewClasses": "View Classes",
+    "items": [
+      {
+        "name": "Swami Samananda Saraswati",
+        "role": "Designated successor",
+        "text": "Deeply dedicated to Thayumanavar Padalgal and classical Tamil Vedanta, bridging language with ultimate truth.",
+        "spec": "Sanskrit Grammar & Thayumanavar Padalgal"
+      },
+      {
+        "name": "Swami Jnanasivananda Saraswati",
+        "role": "Senior resident teacher",
+        "text": "A veteran disciple with 40 years of core Vedanta teaching across South India. Specializes in Prakarana Granthas.",
+        "spec": "Upanishad Bhashya & Bhagavad Gita"
+      },
+      {
+        "name": "Swami Purnananda Saraswati",
+        "role": "Editor, Vedaneri magazine",
+        "text": "Resident teacher leading the monthly publication and spiritual youth camps. Directs the Sanskrit pathasala.",
+        "spec": "Vedic Chanting & Youth Vedanta"
+      }
+    ]
+  },
+  "festival": {
+    "start": "2026-10-12",
+    "end": "2026-10-21",
+    "title": "Sri Saradha Navaratri Peruvila",
+    "text": "Join us for the most auspicious 10 days of celestial worship at Vedapuri. Experience daily evening Chandi Homam, Lalitha Sahasranama Kumkumarchana, and special musical offerings.",
+    "dailyLabel": "Daily evening Puja:",
+    "dailyTime": "5:00 PM to 8:30 PM IST",
+    "countdownLabel": "Countdown to Festival",
+    "days": "Days",
+    "hours": "Hours",
+    "mins": "Mins",
+    "inProgress": "Festival in progress",
+    "dayOf": "Day {n} of {total}",
+    "ended": "This festival has concluded. May its blessings stay with you.",
+    "register": "Register Sankalpam",
+    "photoAlt": "Priests performing the evening aarti before the decorated Devi"
+  },
+  "calendar": {
+    "title": "Sacred Calendar",
+    "subtitle": "Important upcoming mahotsavam and Jayanti days.",
+    "details": "Details",
+    "viewAll": "View Complete Calendar",
+    "items": [
+      {
+        "date": "2026-11-08",
+        "name": "Deepavali Festival"
+      },
+      {
+        "date": "2027-04-14",
+        "name": "Tamil New Year & Special Abhishekam"
+      },
+      {
+        "date": "2027-04-15",
+        "name": "Sri Rama Navami"
+      },
+      {
+        "date": "2027-09-15",
+        "name": "Swami Chidbhavananda Jayanti Aaradhana"
+      }
+    ]
+  },
+  "support": {
+    "title": "Direct Support",
+    "subtitle": "Directly sustain traditional activities of the Ashram.",
+    "sponsor": "Sponsor",
+    "items": [
+      {
+        "key": "annadhanam",
+        "title": "Nitya Annadhanam",
+        "text": "Providing wholesome pure vegetarian food daily to sadhus, spiritual seekers and visitors."
+      },
+      {
+        "key": "go",
+        "title": "Go Samrakshanam",
+        "text": "Protecting and nurturing local breeds of cows in our traditional ashram Goshala."
+      },
+      {
+        "key": "veda",
+        "title": "Veda Patashala Preservation",
+        "text": "Supporting resident young students learning traditional Yajur Veda chanting and rituals."
+      }
+    ]
+  },
+  "audioBar": {
+    "label": "Featured discourse",
+    "title": "Upanishad Sara Sangraham - Lecture 4",
+    "tag": "Mandukya",
+    "by": "by Pujyasri Swami Omkarananda",
+    "play": "Play",
+    "pause": "Pause",
+    "speed": "Playback speed",
+    "mute": "Mute",
+    "unmute": "Unmute",
+    "download": "Download audio",
+    "seek": "Seek",
+    "soon": "Audio coming soon"
+  },
+    "founder": {
+    "eyebrow": "Our Founder",
+    "name": "Pujyasri Swami Omkarananda Mahaswamigal",
+    "role": "Founder of Sri Swami Chidbhavananda Ashramam",
+    "bio": "Pujyasri Omkarananda Mahaswamigal was born in a Vaidika family, deeply rooted in tradition and culture. He embraced the Vedic lifestyle from early childhood. An erudite scholar and Ganapati in his purvashrama, he was proficient in both Tamil and Sanskrit Vedanta texts.",
+    "facts": ["Born in a Vaidika family", "Vedic lifestyle from early childhood", "Tamil and Sanskrit Vedanta scholar"],
+    "cta": "Read his story",
+    "quote": "One who works for purity of mind never loses. He learns to cleanse his mind from texts such as Thirukural.",
+    "photoAlt": "Pujyasri Swami Omkarananda Mahaswamigal with folded hands"
+  },
+  "contactTitle": "Contact",
+"trustItems": [
+  { "name": "Vedanta Sasthra Prachara Trust", "short": "VSPT", "reg": "Reg. No. 226/1992" },
+  { "name": "Sri Dakshinamurti Seva Samiti", "short": "SDSS", "reg": "Reg. No. 500/2002" }
+],
+"quick": {
+  "title": "Quick access",
+  "cta": "Read More",
+  "items": [
+    { "title": "Ashram", "text": "Vedapuri Ashram is a serene spiritual center dedicated to Vedic learning, self-realization, and service to humanity.", "href": "/about" },
+    { "title": "Sevas", "text": "Devotees can offer various Sevas like Go Puja, Archana, and Annadhanam to support spiritual activities.", "href": "/sevas" },
+    { "title": "Donation", "text": "Contributions are welcome for Annadhanam, Veda preservation, cow care, and general support.", "href": "/donate" },
+    { "title": "Resources", "text": "The Ashram provides Swamiji's Audios, Videos, Books & Photos.", "href": "/audio" }
+  ]
+},
+"quotes": {
+  "title": "Pujyasri Swamiji's Quotes",
+  "prev": "Previous quote",
+  "next": "Next quote",
+  "items": [
+    { "text": "Human body is very precious and not easy to get. We get it only with the blessings of Bhagavan and as a result of punya done in the previous births." }
+  ]
+},
+"eyebrow": "Explore",
+"heading": "Begin your spiritual journey",
+"omkarananda": "Pujyasri Omkarananda MahaSwamigal",
+"ashramam": "Ashramam",
+"adhishtanam": "Adhishtanam",
+"vidyapitham": "Vidyapitham",
+"omkarananda": {
+  "meta": {
+    "title": "Pujyasri Omkarananda Mahaswamigal",
+    "description": "Pujyasri Omkarananda Mahaswamigal: Vedanta scholar, teacher and founder of Sri Swami Chidbhavananda Ashramam, Vedapuri, Theni."
+  },
+  "eyebrow": "About Pujyasri Swamiji",
+  "name": "Pujyasri Omkarananda Mahaswamigal",
+  "role": "Ghanapathi, Vedanta teacher and founder of Sri Swami Chidbhavananda Ashramam",
+  "tagline": "Peaceful Happiness For All",
+  "samadhi": "Maha Samadhi · 10 May 2021",
+  "photoAlt": "Portrait of Pujyasri Omkarananda Mahaswamigal",
+  "intro": "Born into a Vaidika family and raised in the Vedic way of life from early childhood, Swamiji became a scholar of both Tamil and Sanskrit Vedanta, and a teacher whose simplicity and compassion won the love of thousands of devotees around the world.",
+  "facts": [
+    { "label": "Born into", "value": "A Vaidika family" },
+    { "label": "Sanyasa guru", "value": "Pujyasri Swami Chidbhavananda" },
+    { "label": "Studied Vedanta under", "value": "Swami Paramarthananda" },
+    { "label": "Maha Samadhi", "value": "10 May 2021" }
+  ],
+  "lifeTitle": "A life of Veda and Vedanta",
+  "life": [
+    { "title": "Rooted in the Vedas", "text": "Born into a Vaidika family steeped in tradition and culture, he took up the Vedic lifestyle from early childhood. In his purvashrama he was a Ghanapathi, well versed in the Veda Purva Bhaga and the Vedanta Shastra." },
+    { "title": "A scholar of two languages", "text": "He was proficient in the Vedanta texts of both Tamil and Sanskrit. Scholars respected him widely, and he received accolades across the country." },
+    { "title": "A teacher without notes", "text": "His lectures were always extempore, never read from notes, and reflected a vast and deep knowledge. Thousands of hours of his talks have been recorded and preserved." },
+    { "title": "A heart full of devotion", "text": "His devotion to Ishwara showed in his soulful renditions of divine songs and slokas. Anyone who met his ever-smiling presence found it a joyful experience." }
+  ],
+  "gurusTitle": "His gurus and teachers",
+  "gurus": [
+    { "role": "Sanyasa Deeksha Guru", "name": "Pujyasri Swami Chidbhavananda", "text": "Swamiji received sanyasa initiation from Pujyasri Swami Chidbhavananda, whose name the ashram he founded carries." },
+    { "role": "Teacher of Vedanta", "name": "Swami Paramarthananda", "text": "He studied Vedanta under Swami Paramarthananda, one of the foremost disciples of Pujyasri Dayananda Saraswati." }
+  ],
+  "tamilTitle": "A master of the Tamil scriptures",
+  "tamilText": "Swamiji was an expert in the Tamil scriptures and a household name in Tamil Nadu during his lifetime. His expertise included the works below.",
+  "tamilWorks": ["Thevaram", "Thiruvasagam", "Thirumandiram", "Hymns of Thayumanavar", "Songs of Bharathiyar", "Tirukkural"],
+  "quote": {
+    "text": "Spiritual aspirants who study texts such as Gita are often mocked at, as ones who do not know the art of survival.",
+    "note": "Only those who study the Gita, he said, can endure life's sorrows and its ups and downs.",
+    "source": "Pujyasri Omkarananda Mahaswamigal"
+  },
+  "missionTitle": "The ashram he founded",
+  "missionText": "Swamiji founded Sri Swami Chidbhavananda Ashramam at Vedapuri, Theni, and established the Vedanta Sastra Prachara Trust to spread Vedantic teachings. He also built the Dakshinamurthi temple at the ashram.",
+  "address": "Sri Swami Chidbhavananda Ashramam, Chatrapatti Road, Vedapuri, Theni, Tamil Nadu 625 531",
+  "missionCta": "Visit the Ashramam",
+  "adhTitle": "The Adhishtanam",
+  "adhText": "Swamiji attained Maha Samadhi on 10 May 2021. An Adhishtanam, a sanctified memorial, stands opposite the Dakshinamurthi temple he built. Regular pujas are held there.",
+  "adhDate": "10 May 2021",
+  "adhCta": "About the Adhishtanam",
+  "listenTitle": "Hear him in his own voice",
+  "listenText": "Thousands of hours of Swamiji's lectures have been recorded and preserved.",
+  "listenAudio": "Listen to audio",
+  "listenVideo": "Watch videos",
+  "moreTitle": "Continue exploring",
+  "crumbLabel": "Breadcrumb"
+}
+}
