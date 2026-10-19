@@ -1,0 +1,101 @@
+'use client';
+
+import { useMemo, useState } from 'react';
+import type { Dictionary } from '@/lib/dictionary';
+import type { Locale } from '@/lib/i18n';
+import { SEVAS, txt } from '@/data/sevas';
+import SevaCard from './sevas/SevaCard';
+
+type T = Dictionary['sevas'];
+
+// Search, filter and sort over the seva catalogue. Each card opens its own detail page.
+export default function SevaList({ t, locale }: { t: T; locale: Locale }) {
+  const [filter, setFilter] = useState('all');
+  const [query, setQuery] = useState('');
+  const [sort, setSort] = useState('default');
+
+  const shown = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const list = SEVAS.filter((s) => (filter === 'all' || s.kind === filter) && (!q || txt(s.name, locale).toLowerCase().includes(q)));
+    if (sort === 'low') return [...list].sort((a, b) => (a.amount || Infinity) - (b.amount || Infinity));
+    if (sort === 'high') return [...list].sort((a, b) => b.amount - a.amount);
+    return list;
+  }, [filter, query, sort, locale]);
+
+  const reset = () => {
+    setFilter('all');
+    setQuery('');
+    setSort('default');
+  };
+
+  return (
+    <div id="seva-list" className="scroll-mt-24">
+      {/* Filters */}
+      <div role="group" aria-label={t.filterLabel} className="flex flex-wrap justify-center gap-3">
+        {t.filters.map((f) => {
+          const on = filter === f.key;
+          const count = f.key === 'all' ? SEVAS.length : SEVAS.filter((s) => s.kind === f.key).length;
+          return (
+            <button
+              key={f.key}
+              type="button"
+              aria-pressed={on}
+              onClick={() => setFilter(f.key)}
+              className={`rounded-full px-5 py-2 text-sm font-semibold ring-1 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-saffron ${
+                on ? 'bg-maroon text-white ring-maroon' : 'bg-white text-maroon ring-saffron/60 hover:bg-rose'
+              }`}
+            >
+              {f.label} <span className={on ? 'text-rose' : 'text-charcoal/60'}>({count})</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Search and sort */}
+      <div className="mx-auto mt-6 grid max-w-3xl gap-3 sm:grid-cols-[1fr_220px]">
+        <label className="block">
+          <span className="sr-only">{t.searchLabel}</span>
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={t.searchPlaceholder}
+            className="w-full rounded-md border-2 border-rose bg-white px-4 py-2.5 text-charcoal placeholder:text-charcoal/50 focus:border-saffron focus:outline-none"
+          />
+        </label>
+        <label className="block">
+          <span className="sr-only">{t.sortLabel}</span>
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value)}
+            className="w-full rounded-md border-2 border-rose bg-white px-3 py-2.5 text-charcoal focus:border-saffron focus:outline-none"
+          >
+            {t.sortOptions.map((o) => (
+              <option key={o.key} value={o.key}>{o.label}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <p role="status" className="mt-6 text-center text-sm font-semibold text-charcoal/70">{t.countLabel.replace('{n}', String(shown.length))}</p>
+
+      {/* Cards */}
+      {shown.length > 0 ? (
+        <ul className="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          {shown.map((s) => (
+            <li key={s.slug} className="h-full">
+              <SevaCard seva={s} locale={locale} t={t} />
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div className="mt-8 rounded-2xl bg-rose/50 px-6 py-12 text-center">
+          <p className="font-serif text-lg text-charcoal">{t.noResults}</p>
+          <button type="button" onClick={reset} className="mt-4 rounded-md bg-maroon px-5 py-2.5 font-semibold text-white hover:bg-charcoal focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-saffron">
+            {t.clearFilters}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}

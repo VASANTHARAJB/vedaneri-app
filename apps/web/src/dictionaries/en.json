@@ -4,22 +4,22 @@
     "tagline": "Sri Swami Chidbhavananda Ashramam"
   },
   "nav": {
-  "home": "Home",
-  "about": "About",
-  "omkarananda": "Pujyasri Omkarananda MahaSwamigal",
-  "ashramam": "Ashramam",
-  "adhishtanam": "Adhishtanam",
-  "vidyapitham": "Vidyapitham",
-  "discourses": "Discourses",
-  "audio": "Audio",
-  "video": "Video",
-  "albums": "Albums",
-  "seva": "Seva",
-  "donations": "Donations",
-  "magazine": "Magazine",
-  "camps": "Camps",
-  "login": "Login"
-},
+    "home": "Home",
+    "about": "About",
+    "omkarananda": "Pujyasri Omkarananda MahaSwamigal",
+    "ashramam": "Ashramam",
+    "adhishtanam": "Adhishtanam",
+    "vidyapitham": "Vidyapitham",
+    "discourses": "Discourses",
+    "audio": "Audio",
+    "video": "Video",
+    "albums": "Albums",
+    "seva": "Seva",
+    "donations": "Donations",
+    "magazine": "Magazine",
+    "camps": "Camps",
+    "login": "Login"
+  },
   "a11y": {
     "mainNavigation": "Main navigation",
     "language": "Language",
@@ -77,26 +77,25 @@
   "guides": {
     "title": "Our Spiritual Guides",
     "subtitle": "Meet the resident Acharyas sustaining the sacred traditional lineage of Vedapuri.",
-    "specLabel": "Primary specialization",
-    "viewClasses": "View Classes",
+    "specLabel": "Focus",
     "items": [
       {
         "name": "Swami Samananda Saraswati",
-        "role": "Designated successor",
-        "text": "Deeply dedicated to Thayumanavar Padalgal and classical Tamil Vedanta, bridging language with ultimate truth.",
-        "spec": "Sanskrit Grammar & Thayumanavar Padalgal"
+        "role": "Designated Successor",
+        "text": "A disciple of Pujyasri Omkarananda Mahaswamigal, who named him as his successor. He was spiritually guided by Pujyasri Paramarthananda and Pujyasri Guruparananda, and has taught almost all major Vedantic texts in various locations. He has a special interest in teaching Thayumanavar Padalgal.",
+        "spec": "Thayumanavar Padalgal & Vedantic Texts"
       },
       {
         "name": "Swami Jnanasivananda Saraswati",
-        "role": "Senior resident teacher",
-        "text": "A veteran disciple with 40 years of core Vedanta teaching across South India. Specializes in Prakarana Granthas.",
-        "spec": "Upanishad Bhashya & Bhagavad Gita"
+        "role": "Vedanta Teacher",
+        "text": "A close associate of Pujyasri Swami Omkarananda Mahaswamigal for nearly four decades, from whom he received Sanyasa Deeksha. Swami Omkarananda and Swami Guruparananda were his spiritual guides. He conducts regular Vedanta classes in Theni, Dindigul and other locations.",
+        "spec": "Vedanta Classes"
       },
       {
         "name": "Swami Purnananda Saraswati",
-        "role": "Editor, Vedaneri magazine",
-        "text": "Resident teacher leading the monthly publication and spiritual youth camps. Directs the Sanskrit pathasala.",
-        "spec": "Vedic Chanting & Youth Vedanta"
+        "role": "Editor, Vedaneri Magazine",
+        "text": "A disciple of Pujyasri Omkarananda Mahaswamigal, from whom he received Sanyasa Deeksha. He completed the three-year Vedanta course conducted by Swamiji from 2000 to 2003 and is now a teacher of Vedanta, conducting classes at the ashram and other locations. For several years he has organized summer and Sunday camps for children, and he serves as editor of Vedaneri, the ashram's magazine.",
+        "spec": "Vedanta Classes & Children's Camps"
       }
     ]
   },
@@ -177,167 +176,1149 @@
     "seek": "Seek",
     "soon": "Audio coming soon"
   },
-    "founder": {
+  "founder": {
     "eyebrow": "Our Founder",
     "name": "Pujyasri Swami Omkarananda Mahaswamigal",
     "role": "Founder of Sri Swami Chidbhavananda Ashramam",
     "bio": "Pujyasri Omkarananda Mahaswamigal was born in a Vaidika family, deeply rooted in tradition and culture. He embraced the Vedic lifestyle from early childhood. An erudite scholar and Ganapati in his purvashrama, he was proficient in both Tamil and Sanskrit Vedanta texts.",
-    "facts": ["Born in a Vaidika family", "Vedic lifestyle from early childhood", "Tamil and Sanskrit Vedanta scholar"],
+    "facts": [
+      "Born in a Vaidika family",
+      "Vedic lifestyle from early childhood",
+      "Tamil and Sanskrit Vedanta scholar"
+    ],
     "cta": "Read his story",
     "quote": "One who works for purity of mind never loses. He learns to cleanse his mind from texts such as Thirukural.",
     "photoAlt": "Pujyasri Swami Omkarananda Mahaswamigal with folded hands"
   },
   "contactTitle": "Contact",
-"trustItems": [
-  { "name": "Vedanta Sasthra Prachara Trust", "short": "VSPT", "reg": "Reg. No. 226/1992" },
-  { "name": "Sri Dakshinamurti Seva Samiti", "short": "SDSS", "reg": "Reg. No. 500/2002" }
-],
-"quick": {
-  "title": "Quick access",
-  "cta": "Read More",
-  "items": [
-    { "title": "Ashram", "text": "Vedapuri Ashram is a serene spiritual center dedicated to Vedic learning, self-realization, and service to humanity.", "href": "/about" },
-    { "title": "Sevas", "text": "Devotees can offer various Sevas like Go Puja, Archana, and Annadhanam to support spiritual activities.", "href": "/sevas" },
-    { "title": "Donation", "text": "Contributions are welcome for Annadhanam, Veda preservation, cow care, and general support.", "href": "/donate" },
-    { "title": "Resources", "text": "The Ashram provides Swamiji's Audios, Videos, Books & Photos.", "href": "/audio" }
-  ]
-},
-"quotes": {
-  "title": "Pujyasri Swamiji's Quotes",
-  "prev": "Previous quote",
-  "next": "Next quote",
-  "items": [
-    { "text": "Human body is very precious and not easy to get. We get it only with the blessings of Bhagavan and as a result of punya done in the previous births." }
-  ]
-},
-"eyebrow": "Explore",
-"heading": "Begin your spiritual journey",
-"omkarananda": "Pujyasri Omkarananda MahaSwamigal",
-"ashramam": "Ashramam",
-"adhishtanam": "Adhishtanam",
-"vidyapitham": "Vidyapitham",
-"omkarananda": {
-  "meta": {
-    "title": "Pujyasri Omkarananda Mahaswamigal",
-    "description": "Pujyasri Omkarananda Mahaswamigal: Vedanta scholar, teacher and founder of Sri Swami Chidbhavananda Ashramam, Vedapuri, Theni."
-  },
-  "eyebrow": "About Pujyasri Swamiji",
-  "name": "Pujyasri Omkarananda Mahaswamigal",
-  "role": "Ghanapathi, Vedanta teacher and founder of Sri Swami Chidbhavananda Ashramam",
-  "tagline": "Peaceful Happiness For All",
-  "samadhi": "Maha Samadhi · 10 May 2021",
-  "photoAlt": "Portrait of Pujyasri Omkarananda Mahaswamigal",
-  "intro": "Born into a Vaidika family and raised in the Vedic way of life from early childhood, Swamiji became a scholar of both Tamil and Sanskrit Vedanta, and a teacher whose simplicity and compassion won the love of thousands of devotees around the world.",
-  "facts": [
-    { "label": "Born into", "value": "A Vaidika family" },
-    { "label": "Sanyasa guru", "value": "Pujyasri Swami Chidbhavananda" },
-    { "label": "Studied Vedanta under", "value": "Swami Paramarthananda" },
-    { "label": "Maha Samadhi", "value": "10 May 2021" }
-  ],
-  "lifeTitle": "A life of Veda and Vedanta",
-  "life": [
-    { "title": "Rooted in the Vedas", "text": "Born into a Vaidika family steeped in tradition and culture, he took up the Vedic lifestyle from early childhood. In his purvashrama he was a Ghanapathi, well versed in the Veda Purva Bhaga and the Vedanta Shastra." },
-    { "title": "A scholar of two languages", "text": "He was proficient in the Vedanta texts of both Tamil and Sanskrit. Scholars respected him widely, and he received accolades across the country." },
-    { "title": "A teacher without notes", "text": "His lectures were always extempore, never read from notes, and reflected a vast and deep knowledge. Thousands of hours of his talks have been recorded and preserved." },
-    { "title": "A heart full of devotion", "text": "His devotion to Ishwara showed in his soulful renditions of divine songs and slokas. Anyone who met his ever-smiling presence found it a joyful experience." }
-  ],
-  "gurusTitle": "His gurus and teachers",
-  "gurus": [
-    { "role": "Sanyasa Deeksha Guru", "name": "Pujyasri Swami Chidbhavananda", "text": "Swamiji received sanyasa initiation from Pujyasri Swami Chidbhavananda, whose name the ashram he founded carries." },
-    { "role": "Teacher of Vedanta", "name": "Swami Paramarthananda", "text": "He studied Vedanta under Swami Paramarthananda, one of the foremost disciples of Pujyasri Dayananda Saraswati." }
-  ],
-  "tamilTitle": "A master of the Tamil scriptures",
-  "tamilText": "Swamiji was an expert in the Tamil scriptures and a household name in Tamil Nadu during his lifetime. His expertise included the works below.",
-  "tamilWorks": ["Thevaram", "Thiruvasagam", "Thirumandiram", "Hymns of Thayumanavar", "Songs of Bharathiyar", "Tirukkural"],
-  "quote": {
-    "text": "Spiritual aspirants who study texts such as Gita are often mocked at, as ones who do not know the art of survival.",
-    "note": "Only those who study the Gita, he said, can endure life's sorrows and its ups and downs.",
-    "source": "Pujyasri Omkarananda Mahaswamigal"
-  },
-  "missionTitle": "The ashram he founded",
-  "missionText": "Swamiji founded Sri Swami Chidbhavananda Ashramam at Vedapuri, Theni, and established the Vedanta Sastra Prachara Trust to spread Vedantic teachings. He also built the Dakshinamurthi temple at the ashram.",
-  "address": "Sri Swami Chidbhavananda Ashramam, Chatrapatti Road, Vedapuri, Theni, Tamil Nadu 625 531",
-  "missionCta": "Visit the Ashramam",
-  "adhTitle": "The Adhishtanam",
-  "adhText": "Swamiji attained Maha Samadhi on 10 May 2021. An Adhishtanam, a sanctified memorial, stands opposite the Dakshinamurthi temple he built. Regular pujas are held there.",
-  "adhDate": "10 May 2021",
-  "adhCta": "About the Adhishtanam",
-  "listenTitle": "Hear him in his own voice",
-  "listenText": "Thousands of hours of Swamiji's lectures have been recorded and preserved.",
-  "listenAudio": "Listen to audio",
-  "listenVideo": "Watch videos",
-  "moreTitle": "Continue exploring",
-  "crumbLabel": "Breadcrumb"
-},
-"guides": {
-  "title": "Our Spiritual Guides",
-  "subtitle": "Meet the resident Acharyas sustaining the sacred traditional lineage of Vedapuri.",
-  "specLabel": "Focus",
-  "items": [
+  "trustItems": [
     {
-      "name": "Swami Samananda Saraswati",
-      "role": "Designated Successor",
-      "text": "A disciple of Pujyasri Omkarananda Mahaswamigal, who named him as his successor. He was spiritually guided by Pujyasri Paramarthananda and Pujyasri Guruparananda, and has taught almost all major Vedantic texts in various locations. He has a special interest in teaching Thayumanavar Padalgal.",
-      "spec": "Thayumanavar Padalgal & Vedantic Texts"
+      "name": "Vedanta Sasthra Prachara Trust",
+      "short": "VSPT",
+      "reg": "Reg. No. 226/1992"
     },
     {
-      "name": "Swami Jnanasivananda Saraswati",
-      "role": "Vedanta Teacher",
-      "text": "A close associate of Pujyasri Swami Omkarananda Mahaswamigal for nearly four decades, from whom he received Sanyasa Deeksha. Swami Omkarananda and Swami Guruparananda were his spiritual guides. He conducts regular Vedanta classes in Theni, Dindigul and other locations.",
-      "spec": "Vedanta Classes"
-    },
-    {
-      "name": "Swami Purnananda Saraswati",
-      "role": "Editor, Vedaneri Magazine",
-      "text": "A disciple of Pujyasri Omkarananda Mahaswamigal, from whom he received Sanyasa Deeksha. He completed the three-year Vedanta course conducted by Swamiji from 2000 to 2003 and is now a teacher of Vedanta, conducting classes at the ashram and other locations. For several years he has organized summer and Sunday camps for children, and he serves as editor of Vedaneri, the ashram's magazine.",
-      "spec": "Vedanta Classes & Children's Camps"
+      "name": "Sri Dakshinamurti Seva Samiti",
+      "short": "SDSS",
+      "reg": "Reg. No. 500/2002"
     }
-  ]
-},
-"omkarananda": {
-  "meta": {
-    "title": "Pujyasri Omkarananda Mahaswamigal",
-    "description": "Profile of Pujyasri Omkarananda Mahaswamigal, founder and Chief Acharya of Sri Swami Chidbhavananda Ashramam, Vedapuri, Theni: his life, his Vedanta teaching and his Peetham."
+  ],
+  "quick": {
+    "title": "Quick access",
+    "cta": "Read More",
+    "items": [
+      {
+        "title": "Ashram",
+        "text": "Vedapuri Ashram is a serene spiritual center dedicated to Vedic learning, self-realization, and service to humanity.",
+        "href": "/about"
+      },
+      {
+        "title": "Sevas",
+        "text": "Devotees can offer various Sevas like Go Puja, Archana, and Annadhanam to support spiritual activities.",
+        "href": "/sevas"
+      },
+      {
+        "title": "Donation",
+        "text": "Contributions are welcome for Annadhanam, Veda preservation, cow care, and general support.",
+        "href": "/donate"
+      },
+      {
+        "title": "Resources",
+        "text": "The Ashram provides Swamiji's Audios, Videos, Books & Photos.",
+        "href": "/audio"
+      }
+    ]
   },
-  "eyebrow": "Sri Gurubhyo Namaha",
-  "name": "Sri Swami Omkarananda",
-  "profile": "A Profile",
-  "role": "Founder and Chief Acharya, Sri Swami Chidbhavananda Ashramam",
-  "tagline": "Peaceful Happiness For All",
-  "samadhi": "Maha Samadhi · 10 May 2021",
-  "photoAlt": "Portrait of Pujyasri Omkarananda Mahaswamigal",
-  "intro": "Born in a traditional Vedic family, he learned the Vedas at a very early age. He grew into an outstanding teacher of Vedanta, known for his eloquence in Tamil and Sanskrit.",
-  "facts": [
-    { "label": "Sannyasa Diksha", "value": "4 May 1985" },
-    { "label": "Vedanta studies", "value": "1987 – 1994" },
-    { "label": "Maha Kumbhabhishekam", "value": "June 2004" },
-    { "label": "Peetharohana", "value": "11 May 2005" }
+  "quotes": {
+    "title": "Pujyasri Swamiji's Quotes",
+    "prev": "Previous quote",
+    "next": "Next quote",
+    "items": [
+      {
+        "text": "Human body is very precious and not easy to get. We get it only with the blessings of Bhagavan and as a result of punya done in the previous births."
+      }
+    ]
+  },
+  "eyebrow": "Explore",
+  "heading": "Begin your spiritual journey",
+  "omkarananda": {
+    "meta": {
+      "title": "Pujyasri Omkarananda Mahaswamigal",
+      "description": "Profile of Pujyasri Omkarananda Mahaswamigal, founder and Chief Acharya of Sri Swami Chidbhavananda Ashramam, Vedapuri, Theni: his life, his Vedanta teaching and his Peetham."
+    },
+    "eyebrow": "Sri Gurubhyo Namaha",
+    "name": "Sri Swami Omkarananda",
+    "profile": "A Profile",
+    "role": "Founder and Chief Acharya, Sri Swami Chidbhavananda Ashramam",
+    "tagline": "Peaceful Happiness For All",
+    "samadhi": "Maha Samadhi · 10 May 2021",
+    "photoAlt": "Portrait of Pujyasri Omkarananda Mahaswamigal",
+    "intro": "Born in a traditional Vedic family, he learned the Vedas at a very early age. He grew into an outstanding teacher of Vedanta, known for his eloquence in Tamil and Sanskrit.",
+    "facts": [
+      {
+        "label": "Sannyasa Diksha",
+        "value": "4 May 1985"
+      },
+      {
+        "label": "Vedanta studies",
+        "value": "1987 – 1994"
+      },
+      {
+        "label": "Maha Kumbhabhishekam",
+        "value": "June 2004"
+      },
+      {
+        "label": "Peetharohana",
+        "value": "11 May 2005"
+      }
+    ],
+    "lifeTitle": "A life of Veda and Vedanta",
+    "timeline": [
+      {
+        "when": "Early years",
+        "title": "Born into a Vedic family",
+        "text": "Sri Swami Omkarananda was born in a traditional Vedic family. He learned the Vedas at a very early age."
+      },
+      {
+        "when": "4 May 1985",
+        "title": "Sannyasa Diksha",
+        "text": "In his early twenties, greatly inspired by the teachings of Sri Swami Vivekananda, he joined Ramakrishna Tapovanam at Tirupparaithurai. Sri Swami Chidbhavananda Maharaj gave him Sannyasa Diksha on May 4, 1985, and named him Sri Swami Omkarananda."
+      },
+      {
+        "when": "1985 – 1987",
+        "title": "Touring Tamil Nadu",
+        "text": "Sri Swamiji toured all over Tamil Nadu and conducted Antaryogams and classes on spoken Sanskrit."
+      },
+      {
+        "when": "1987 – 1994",
+        "title": "Studying Vedanta",
+        "text": "His quest for knowledge of Vedanta led him to Sri Swami Paramarthananda, a disciple of Sri Swami Dayananda Saraswati. Under his guidance he studied Vedanta."
+      },
+      {
+        "when": "After his studies",
+        "title": "Founding the Ashram",
+        "text": "He founded Sri Swami Chidbhavananda Ashramam on the banks of the river Surabhi Saraswathi, also known as the Mullaiyaru, at Theni. He established the Vedanta Sasthra Prachara Trust to manage the Ashram."
+      },
+      {
+        "when": "June 2004",
+        "title": "Temple of Adiguru Sri Prajna Dakshinamurti",
+        "text": "In the precincts of the Ashram, Sri Swamiji established a grand temple dedicated to Adiguru Sri Prajna Dakshinamurti. Its Maha Kumbhabhishekam was performed in June 2004, and the temple attracts a large number of devotees from all over the world."
+      },
+      {
+        "when": "11 May 2005",
+        "title": "Peetharohana at Pudukkottai",
+        "text": "Sri Swamiji succeeded H.H. Sri Sri Santananda Swamigal of Sri Sri Judge Swamigal Adhishthanam, popularly known as Sri Bhuvaneshwari Avaduta Vidya Pitham, at Pudukkottai. This Peetham has a long history of conducting various homams and poojas."
+      }
+    ],
+    "todayTitle": "Teacher, Acharya and guide",
+    "todayIntro": "Sri Swamiji was an outstanding teacher of Vedanta, known for his eloquence in Tamil and Sanskrit. His ability to present even the most intricate topics of Vedanta in an easily understandable manner won him a large following among grassroots rural communities.",
+    "roles": [
+      {
+        "title": "Chief Acharya of the Ashram",
+        "text": "He conducted Vedanta classes for the brahmacharis and satsangs for the Ashram inmates. Residential camps and antaryogams were also conducted by him."
+      },
+      {
+        "title": "Teaching beyond the Ashram",
+        "text": "Recognizing his erudition, various organizations in India and abroad regularly arranged his discourse programmes. He also visited schools and colleges upon invitation and delivered lectures."
+      },
+      {
+        "title": "Guidance in temple and ritual matters",
+        "text": "Devotees regularly consulted him on temple construction, poojas and rituals, and he was invited to preside over various temple Kumbhabhishekams and Vedic rituals. His erudition in both Karma Kanda and Jnana Kanda placed him in a unique position among all traditional acharyas."
+      }
+    ],
+    "abroadTitle": "Vedanta classes around the world",
+    "abroadText": "Sri Swamiji travelled widely and conducted Vedantic classes in:",
+    "abroad": [
+      "Hong Kong",
+      "Singapore",
+      "Malaysia",
+      "London",
+      "Australia",
+      "New Zealand",
+      "Sri Lanka"
+    ],
+    "listenTitle": "Hear him in his own voice",
+    "listenText": "Thousands of hours of Swamiji's lectures have been recorded and preserved.",
+    "listenAudio": "Listen to audio",
+    "listenVideo": "Watch videos",
+    "moreTitle": "Continue exploring",
+    "crumbLabel": "Breadcrumb"
+  },
+  "ashramam": {
+    "meta": {
+      "title": "Ashramam",
+      "description": "Sri Swami Chidbhavananda Ashramam at Vedapuri, Theni: a centre for Vedantic learning and spiritual growth, founded in 1995 by Pujyasri Omkarananda Mahaswamigal."
+    },
+    "eyebrow": "Vedapuri · Theni",
+    "title": "Sri Swami Chidbhavananda Ashramam",
+    "tagline": "Peaceful Happiness For All",
+    "heroAlt": "The ashram at Vedapuri, Theni",
+    "est": "Founded 1995",
+    "intro": "A centre for Vedantic learning and spiritual growth, in the Western Ghats beside the Surabhi Saraswati river.",
+    "stats": [
+      {
+        "value": "1995",
+        "label": "Ashram founded by Pujyasri Omkarananda Mahaswamigal"
+      },
+      {
+        "value": "1992",
+        "label": "Vedanta Sastra Prachara Trust founded"
+      },
+      {
+        "value": "Western Ghats",
+        "label": "Beside the Surabhi Saraswati river"
+      }
+    ],
+    "aboutTitle": "A centre for Vedantic learning",
+    "aboutText1": "The ashram at Theni was founded in 1995 by Pujyasri Omkarananda Mahaswamigal.",
+    "aboutText2": "It is run by the Vedanta Sastra Prachara Trust, founded in 1992. The Trust's goal is to make the ashram a centre for Vedantic learning and spiritual growth.",
+    "trustLabel": "Vedanta Sastra Prachara Trust · Reg. No. 226/1992",
+    "riverAlt": "The Surabhi Saraswati river near the ashram",
+    "settingTitle": "In the lap of the Western Ghats",
+    "settingText": "The ashram lies in the Western Ghats, near the Surabhi Saraswati river. The setting suits chitta shuddhi, contemplation, meditation and prayer. Swamiji described it as a place of divine connectivity and inner peace. Visiting Vedanta teachers often hold classes here.",
+    "settingTags": [
+      "Chitta shuddhi",
+      "Contemplation",
+      "Meditation",
+      "Prayer"
+    ],
+    "facilitiesTitle": "Inside the ashram",
+    "facilitiesText": "The ashram provides clean, comfortable accommodation and food for devotees.",
+    "facilities": [
+      "Adi Guru Sri Prajna Dakshinamurti Vidyapitham",
+      "Ghosala",
+      "Veda Patashala",
+      "Agni Global Classroom",
+      "Sri Bharati Tirtha Vidyarthi Vilasa",
+      "Annalakshmi Dining Hall"
+    ],
+    "quote": {
+      "text": "Only those who study the Gita can survive the sorrows and vagaries of life.",
+      "source": "Pujyasri Omkarananda Mahaswamigal"
+    },
+    "visitTitle": "Visit the ashram",
+    "address": "Sri Swami Chidbhavananda Ashramam, Chatrapatti Road, Vedapuri, Theni, Tamil Nadu 625 531",
+    "visitCta": "Contact us",
+    "moreTitle": "Continue exploring",
+    "crumbLabel": "Breadcrumb"
+  },
+  "adhishtanam": {
+    "meta": {
+      "title": "Adhishtanam",
+      "description": "The Adhishtanam of Pujyasri Omkarananda MahaSwamigal at Sri Swami Chidbhavananda Ashramam, Vedapuri, Theni. It faces Adi Guru Prajna Dakshinamurti and is housed in the Dhyana Mandapam."
+    },
+    "eyebrow": "The Adhishtanam",
+    "title": "Pujyasri Omkarananda MahaSwamigal Adhishtanam",
+    "tagline": "In the Dhyana Mandapam, facing Adi Guru Prajna Dakshinamurti",
+    "heroAlt": "The Adhishtanam of Pujyasri Omkarananda MahaSwamigal",
+    "est": "Maha Samadhi · 10 May 2021",
+    "intro": "Swamiji's Adhishtanam is in the Dhyana Mandapam, built facing Adi Guru Prajna Dakshinamurti. Devotees come here to perform pradakshina, japa and dhyana, and to receive his blessings.",
+    "stats": [
+      {
+        "value": "10 May 2021",
+        "label": "Pujyasri Omkarananda MahaSwamigal attained Maha Samadhi"
+      },
+      {
+        "value": "Dhyana Mandapam",
+        "label": "The Adhishtanam is housed here"
+      },
+      {
+        "value": "7:00 PM",
+        "label": "Nitya parayanam every day"
+      }
+    ],
+    "aboutTitle": "About the Adhishtanam",
+    "aboutText1": "Pujyasri Omkarananda MahaSwamigal attained Maha Samadhi on 10 May 2021. An Adhishtanam was consecrated for him, facing Adi Guru Prajna Dakshinamurti.",
+    "aboutText2": "The Adhishtanam is housed in the Dhyana Mandapam. Devotees come here to receive Swamiji's blessings.",
+    "photoAlt": "The Dhyana Mandapam housing the Adhishtanam",
+    "verse": {
+      "sanskrit": [
+        "न गुरोरधिकं तत्त्वं न गुरोरधिकं तपः ।",
+        "तत्त्वज्ञानात् परं नास्ति तस्मै श्रीगुरवे नमः ॥"
+      ],
+      "translation": "There is no truth higher than the Guru, no penance higher than the Guru, and nothing beyond knowledge of the Truth. Salutations to that revered Guru.",
+      "source": "Guru Gita"
+    },
+    "doTitle": "What devotees do here",
+    "doText": "Devotees come to the Adhishtanam to perform pradakshina, japa and dhyana, and to receive Swamiji's blessings.",
+    "practices": [
+      {
+        "name": "Pradakshina",
+        "text": "Walking around the Adhishtanam in reverence."
+      },
+      {
+        "name": "Japa",
+        "text": "Repeating the name of the Lord in silence."
+      },
+      {
+        "name": "Dhyana",
+        "text": "Sitting quietly in meditation in the Dhyana Mandapam."
+      }
+    ],
+    "parayanamLabel": "Every evening",
+    "parayanamTime": "7:00 PM",
+    "parayanamTitle": "Nitya parayanam",
+    "parayanamText": "Every day at 7:00 PM, the sanyasis and brahmacharis of the ashram chant:",
+    "parayanam": [
+      "Bhagavad Gita",
+      "Vishnu Sahasranamam",
+      "Lalitha Sahasranamam"
+    ],
+    "teaching": {
+      "text": "Those who study texts like the Gita may be mocked, yet it is they who can survive the sorrows and vagaries of life.",
+      "source": "From the teaching of Pujyasri Omkarananda MahaSwamigal"
+    },
+    "visitTitle": "Visit the Adhishtanam",
+    "address": "Sri Swami Chidbhavananda Ashramam, Chatrapatti Road, Vedapuri, Theni, Tamil Nadu 625 531",
+    "visitCta": "Contact us",
+    "moreTitle": "Continue exploring",
+    "crumbLabel": "Breadcrumb"
+  },
+  "vidyapitham": {
+    "meta": {
+      "title": "Vidyapitham",
+      "description": "The Adi Guru Sri Prajna Dakshinamurti Vidyapitham at Sri Swami Chidbhavananda Ashramam, Vedapuri, Theni: consecrated in 2004, a Gurusthalam where the Adiguru and the Devaguru bless devotees under one roof."
+    },
+    "eyebrow": "A Gurusthalam",
+    "title": "Adi Guru Sri Prajna Dakshinamurti Vidyapitham",
+    "tagline": "The Adiguru and the Devaguru, under one roof",
+    "heroAlt": "The Adi Guru Sri Prajna Dakshinamurti Vidyapitham temple",
+    "est": "Maha Kumbhabhishekam · June 2004",
+    "intro": "The Vidyapitham stands inside the ashram grounds, with Adiguru Sri Prajna Dakshinamurti as its presiding deity. With Devaguru Brihaspati also consecrated here, it is a unique Gurusthalam where both the Adiguru and the Devaguru bless devotees.",
+    "stats": [
+      {
+        "value": "June 2004",
+        "label": "Maha Kumbhabhishekam"
+      },
+      {
+        "value": "2016",
+        "label": "Second Maha Kumbhabhishekam"
+      },
+      {
+        "value": "9 feet",
+        "label": "Height of the Moolavar"
+      }
+    ],
+    "aboutTitle": "The Vidyapitham",
+    "aboutText1": "The Adiguru Sri Prajna Dakshinamurti Vidyapitham is inside the ashram grounds. Its presiding deity is Adiguru Sri Prajna Dakshinamurti. Pujyasri Swamiji consecrated it in 2004.",
+    "aboutText2": "A trust, Sri Dakshinamurti Seva Samiti, manages its activities. With the consecration of Devaguru Brihaspati, the Vidyapitham at Vedapuri, Theni, became a unique Gurusthalam, where both the Adiguru and the Devaguru bless devotees under one roof.",
+    "photoAlt": "The Vidyapitham temple with its vimanam",
+    "murtisTitle": "The six Shanmatha Murtis",
+    "murtisText": "Six deities, the Shanmatha Murtis, are consecrated in separate mandapams.",
+    "murtiTag": "In its own mandapam",
+    "murtis": [
+      "Sri Vinayakar",
+      "Sri Subrahmanyar",
+      "Sri Dakshinamurti (Utsavar)",
+      "Sri Sharadambal",
+      "Sri Badari Narayanar",
+      "Sri Surya Narayanar"
+    ],
+    "kshetraTitle": "Features of an ideal kshetra",
+    "kshetraText": "The Vidyapitham has the four features by which a sacred place is known.",
+    "kshetra": [
+      {
+        "label": "Murti",
+        "value": "Sri Adiguru Prajna Dakshinamurti"
+      },
+      {
+        "label": "Sthalam (place)",
+        "value": "Vedapuri"
+      },
+      {
+        "label": "Thirtham (sacred water)",
+        "value": "Surabhi Saraswati (Mullaiyaru)"
+      },
+      {
+        "label": "Vruksham (sacred tree)",
+        "value": "Vata (banyan)"
+      }
+    ],
+    "historyTitle": "History and milestones",
+    "history": [
+      {
+        "when": "June 2004",
+        "title": "Maha Kumbhabhishekam",
+        "text": "The Maha Kumbhabhishekam of the Adiguru temple was held on a grand scale."
+      },
+      {
+        "when": "20 June 2005",
+        "title": "Samvatsarabhishekam",
+        "text": "The first-year anniversary rite of the temple, together with the Kumbhabhishekam of the Shanmatha deities."
+      },
+      {
+        "when": "2016",
+        "title": "Second Maha Kumbhabhishekam",
+        "text": "The second Maha Kumbhabhishekam of the Vidyapitham was performed."
+      }
+    ],
+    "worshipText": "Panchakala Poojas are performed regularly. Abhishekam is given three times a day to Sri Swarna Kaleeshwarar and Dharmasamvardhani Ambal. Special abhishekams and poojas are held on the first day of each Tamil month, on Pradosham and Pournami days, and on other auspicious occasions.",
+    "featuresTitle": "Other features of the temple",
+    "features": [
+      {
+        "label": "Architecture",
+        "value": "Follows the Purva Karanagama Vidhipatala Shastra"
+      },
+      {
+        "label": "Location",
+        "value": "At the southern end of the locality, on a riverbank"
+      },
+      {
+        "label": "Moolavar",
+        "value": "Adiguru Sri Prajna Dakshinamurti, 9 feet tall"
+      },
+      {
+        "label": "Mahamantapam",
+        "value": "108 ft by 54 ft"
+      },
+      {
+        "label": "Five kalasams",
+        "value": "Above the main shrine's vimanam, representing the Panchakshara Mahamantra, Namah Sivaya"
+      },
+      {
+        "label": "Moola mantras",
+        "value": "Written by several hundred devotees a few crore times, preserved under each idol"
+      }
+    ],
+    "featuresNote": "From any part of the mahamantapam, devotees can see both the Moolavar and the vimanam at once. The Trust also arranges Jnana Yajnas by Swamiji in India and abroad.",
+    "scheduleTitle": "Daily puja and abhishekam",
+    "scheduleText": "The temple's daily schedule, from the Gau Pooja at dawn to the Ardha Jama Puja at night.",
+    "scheduleNote": "Timings may change on festival days. Please confirm with the ashram before you travel.",
+    "morningLabel": "Morning",
+    "eveningLabel": "Evening",
+    "morning": [
+      {
+        "time": "5:45 AM",
+        "label": "Gau Pooja",
+        "kind": "puja"
+      },
+      {
+        "time": "6:00 AM",
+        "label": "Viswarupa Darshanam",
+        "kind": "puja"
+      },
+      {
+        "time": "6:05 AM",
+        "label": "Japam and Dhyanam",
+        "kind": "puja"
+      },
+      {
+        "time": "7:00 AM",
+        "label": "Abhishekam of Adiguru Sri Prajna Dakshinamurti and Sri Dharmasamvardhani Sameta Swarna Kaleeshwarar",
+        "kind": "puja"
+      },
+      {
+        "time": "7:45 AM",
+        "label": "Kala Sandhi Puja",
+        "kind": "puja"
+      },
+      {
+        "time": "8:15 AM",
+        "label": "Ashram staff prayer",
+        "kind": "puja"
+      },
+      {
+        "time": "8:30 AM",
+        "label": "Bhakta Darshanam",
+        "kind": "puja"
+      },
+      {
+        "time": "11:30 AM",
+        "label": "Sri Dharmasamvardhani Sameta Swarna Kaleeshwarar Puja",
+        "kind": "puja"
+      },
+      {
+        "time": "12:00 PM",
+        "label": "Uchikala Puja",
+        "kind": "puja"
+      },
+      {
+        "time": "12:30 PM",
+        "label": "Temple closes",
+        "kind": "gate"
+      }
+    ],
+    "evening": [
+      {
+        "time": "5:00 PM",
+        "label": "Temple reopens for Bhakta Darshanam",
+        "kind": "gate"
+      },
+      {
+        "time": "6:30 PM",
+        "label": "Sri Dharmasamvardhani Sameta Swarna Kaleeshwarar Puja",
+        "kind": "puja"
+      },
+      {
+        "time": "7:00 PM",
+        "label": "Sayarakshai and Maha Deeparadhanai",
+        "kind": "puja"
+      },
+      {
+        "time": "8:30 PM",
+        "label": "Ardha Jama Puja; temple closes",
+        "kind": "gate"
+      }
+    ],
+    "corpusTitle": "Pooja Corpus",
+    "corpusText": "Five daily Kala Poojas and the Sri Gau Mutra Pooja are performed every day at the Dakshinamurti Temple. Devotees can sponsor a one-day pooja or a lifetime Pooja Corpus.",
+    "corpusOptions": [
+      {
+        "label": "One-day pooja",
+        "value": "₹1,000"
+      },
+      {
+        "label": "Lifetime Pooja Corpus",
+        "value": "₹5,000"
+      }
+    ],
+    "corpusCta": "See the sevas",
+    "trustTitle": "Sri Dakshinamurti Seva Samiti",
+    "trustText": "The Vidyapitham's activities are managed by Sri Dakshinamurti Seva Samiti. Its progress is owed to the support and participation of devotees.",
+    "trustReg": "Reg. No. 500/2002",
+    "visitTitle": "Visit the Vidyapitham",
+    "address": "Sri Swami Chidbhavananda Ashramam, Chatrapatti Road, Vedapuri, Theni, Tamil Nadu 625 531",
+    "visitCta": "Contact us",
+    "moreTitle": "Continue exploring",
+    "crumbLabel": "Breadcrumb"
+  },
+  "facilitiesText": "The ashram provides hygienic and comfortable accommodation and food for devotees.",
+  "facilities": [
+    {
+      "name": "Adi Guru Sri Prajna Dakshinamurti Vidyapitham",
+      "tag": "Temple · Gurusthalam",
+      "text": "A temple complex in the ashram precincts, with Adiguru Sri Prajna Dakshinamurti as the presiding deity. It is called a Gurusthalam because Devaguru Brihaspati is also consecrated here, so both the Adiguru and the Devaguru shower their grace. The temple is managed by Sri Dakshinamurti Seva Samiti.",
+      "facts": [
+        {
+          "label": "Presiding deity",
+          "value": "Adiguru Sri Prajna Dakshinamurti"
+        },
+        {
+          "label": "Maha Kumbhabhishekam",
+          "value": "June 2004"
+        },
+        {
+          "label": "Moolavar",
+          "value": "9 feet tall"
+        },
+        {
+          "label": "Daily puja",
+          "value": "Gau Pooja 5:45 am · Abhishekam 7:00 am · closes 12:30 pm, reopens 5:00 pm · closing 8:30 pm"
+        }
+      ]
+    },
+    {
+      "name": "Ghosala",
+      "tag": "Cow shelter",
+      "text": "The ashram keeps a ghosala, a shelter for cows. At the temple, Gau Pooja is performed every morning at 5:45 am.",
+      "facts": []
+    },
+    {
+      "name": "Veda Patashala",
+      "tag": "Vedic study",
+      "text": "The ashram's Veda Patashala, a school for the traditional study of the Vedas.",
+      "facts": []
+    },
+    {
+      "name": "Agni Global Classroom",
+      "tag": "Classroom",
+      "text": "The ashram's Agni Global Classroom, a place for learning.",
+      "facts": []
+    },
+    {
+      "name": "Sri Bharati Tirtha Vidyarthi Vilasa",
+      "tag": "Accommodation",
+      "text": "The ashram's accommodation. The ashram provides hygienic and comfortable accommodation for devotees.",
+      "facts": []
+    },
+    {
+      "name": "Annalakshmi Dining Hall",
+      "tag": "Food for devotees",
+      "text": "The ashram's dining hall. The ashram provides hygienic food for devotees.",
+      "facts": []
+    }
   ],
-  "lifeTitle": "A life of Veda and Vedanta",
-  "timeline": [
-    { "when": "Early years", "title": "Born into a Vedic family", "text": "Sri Swami Omkarananda was born in a traditional Vedic family. He learned the Vedas at a very early age." },
-    { "when": "4 May 1985", "title": "Sannyasa Diksha", "text": "In his early twenties, greatly inspired by the teachings of Sri Swami Vivekananda, he joined Ramakrishna Tapovanam at Tirupparaithurai. Sri Swami Chidbhavananda Maharaj gave him Sannyasa Diksha on May 4, 1985, and named him Sri Swami Omkarananda." },
-    { "when": "1985 – 1987", "title": "Touring Tamil Nadu", "text": "Sri Swamiji toured all over Tamil Nadu and conducted Antaryogams and classes on spoken Sanskrit." },
-    { "when": "1987 – 1994", "title": "Studying Vedanta", "text": "His quest for knowledge of Vedanta led him to Sri Swami Paramarthananda, a disciple of Sri Swami Dayananda Saraswati. Under his guidance he studied Vedanta." },
-    { "when": "After his studies", "title": "Founding the Ashram", "text": "He founded Sri Swami Chidbhavananda Ashramam on the banks of the river Surabhi Saraswathi, also known as the Mullaiyaru, at Theni. He established the Vedanta Sasthra Prachara Trust to manage the Ashram." },
-    { "when": "June 2004", "title": "Temple of Adiguru Sri Prajna Dakshinamurti", "text": "In the precincts of the Ashram, Sri Swamiji established a grand temple dedicated to Adiguru Sri Prajna Dakshinamurti. Its Maha Kumbhabhishekam was performed in June 2004, and the temple attracts a large number of devotees from all over the world." },
-    { "when": "11 May 2005", "title": "Peetharohana at Pudukkottai", "text": "Sri Swamiji succeeded H.H. Sri Sri Santananda Swamigal of Sri Sri Judge Swamigal Adhishthanam, popularly known as Sri Bhuvaneshwari Avaduta Vidya Pitham, at Pudukkottai. This Peetham has a long history of conducting various homams and poojas." }
-  ],
-  "todayTitle": "Teacher, Acharya and guide",
-  "todayIntro": "Sri Swamiji was an outstanding teacher of Vedanta, known for his eloquence in Tamil and Sanskrit. His ability to present even the most intricate topics of Vedanta in an easily understandable manner won him a large following among grassroots rural communities.",
-  "roles": [
-    { "title": "Chief Acharya of the Ashram", "text": "He conducted Vedanta classes for the brahmacharis and satsangs for the Ashram inmates. Residential camps and antaryogams were also conducted by him." },
-    { "title": "Teaching beyond the Ashram", "text": "Recognizing his erudition, various organizations in India and abroad regularly arranged his discourse programmes. He also visited schools and colleges upon invitation and delivered lectures." },
-    { "title": "Guidance in temple and ritual matters", "text": "Devotees regularly consulted him on temple construction, poojas and rituals, and he was invited to preside over various temple Kumbhabhishekams and Vedic rituals. His erudition in both Karma Kanda and Jnana Kanda placed him in a unique position among all traditional acharyas." }
-  ],
-  "abroadTitle": "Vedanta classes around the world",
-  "abroadText": "Sri Swamiji travelled widely and conducted Vedantic classes in:",
-  "abroad": ["Hong Kong", "Singapore", "Malaysia", "London", "Australia", "New Zealand", "Sri Lanka"],
-  "listenTitle": "Hear him in his own voice",
-  "listenText": "Thousands of hours of Swamiji's lectures have been recorded and preserved.",
-  "listenAudio": "Listen to audio",
-  "listenVideo": "Watch videos",
-  "moreTitle": "Continue exploring",
-  "crumbLabel": "Breadcrumb"
-}
+  "sevas": {
+    "meta": {
+      "title": "Sevas",
+      "description": "Offer sevas at Sri Swami Chidbhavananda Ashramam, Vedapuri, Theni: poojas, abhishekams, Navaratri sevas and Annadhanam, managed by Sri Dakshinamurti Seva Samiti."
+    },
+    "eyebrow": "Sri Dakshinamurti Seva Samiti",
+    "title": "Sevas",
+    "intro": "Seva is a way of expressing devotion to God without expectation of results and outcomes.",
+    "crumbLabel": "Breadcrumb",
+    "listLabel": "Seva List",
+    "corpusLabel": "Corpus Fund",
+    "filterLabel": "Filter sevas",
+    "filters": [
+      {
+        "key": "all",
+        "label": "All sevas"
+      },
+      {
+        "key": "festival",
+        "label": "Festival sevas"
+      },
+      {
+        "key": "regular",
+        "label": "Regular sevas"
+      },
+      {
+        "key": "annadhanam",
+        "label": "Annadhanam"
+      }
+    ],
+    "abilityLabel": "As per your ability",
+    "closedLabel": "Registration closed",
+    "corpusTitle": "Corpus Fund",
+    "corpusText": "Sponsor a one-day pooja (₹1,000) or a lifetime Pooja Corpus (₹5,000) at the Dakshinamurti Temple, where five daily Kala Poojas are performed.",
+    "corpusCta": "Corpus Fund and donations",
+    "helpTitle": "Need help with a seva?",
+    "helpText": "Write to the ashram and we will help you.",
+    "helpCta": "Contact us",
+    "searchLabel": "Search sevas",
+    "searchPlaceholder": "Search by name",
+    "sortLabel": "Sort by",
+    "sortOptions": [
+      {
+        "key": "default",
+        "label": "Featured"
+      },
+      {
+        "key": "low",
+        "label": "Price: low to high"
+      },
+      {
+        "key": "high",
+        "label": "Price: high to low"
+      }
+    ],
+    "countLabel": "{n} sevas",
+    "noResults": "No sevas match your search.",
+    "clearFilters": "Show all sevas",
+    "viewLabel": "View details",
+    "backLabel": "All sevas",
+    "whenLabel": "When",
+    "amountLabel": "Amount",
+    "statusClosed": "Registration closed",
+    "statusPast": "The date for this seva has passed",
+    "formTitle": "Book this seva",
+    "dateLabel": "Seva date",
+    "dateFixed": "This seva is on {date}.",
+    "dateRange": "Choose a date from {from} to {to}.",
+    "dateWeekday": "Offered every {day}. Please choose a {day}.",
+    "dateAny": "Choose the date you would like the seva on.",
+    "devoteeName": "Devotee name",
+    "devoteeNameHelp": "The name in which the seva is offered.",
+    "gotram": "Gotram",
+    "nakshatram": "Nakshatram",
+    "optional": "optional",
+    "amountInput": "Your seva amount",
+    "amountHelp": "Offer as you are able.",
+    "qtyLabel": "Quantity",
+    "totalLabel": "Total",
+    "addToCart": "Add to cart",
+    "bookNow": "Book now",
+    "added": "Added to your cart.",
+    "viewCart": "View cart",
+    "keepBrowsing": "Add another seva",
+    "errName": "Please enter the devotee's name.",
+    "errDate": "Please choose a date.",
+    "errDatePast": "Please choose today or a later date.",
+    "errDateRange": "Please choose a date within the dates shown.",
+    "errDateWeekday": "This seva is offered only on {day}.",
+    "errAmount": "Please enter an amount of at least {min}.",
+    "aboutTitle": "About this seva",
+    "descriptionEmpty": "A full description of this seva will be added here by the ashram.",
+    "includesTitle": "What this seva includes",
+    "howTitle": "How to book",
+    "howSteps": [
+      {
+        "title": "Choose your seva",
+        "text": "Pick a seva and the date."
+      },
+      {
+        "title": "Add devotee details",
+        "text": "Enter the name in which the seva is offered."
+      },
+      {
+        "title": "Pay online",
+        "text": "Check out and complete the payment."
+      },
+      {
+        "title": "Get your receipt",
+        "text": "A receipt is sent to your email."
+      }
+    ],
+    "relatedTitle": "More sevas",
+    "tabsLabel": "Seva sections",
+    "tabAll": "All Sevas",
+    "tabSeva": "Seva List",
+    "tabCorpus": "Corpus List",
+    "catalogTitle": "Available Sevas & Offerings",
+    "catalogTitleCorpus": "Corpus Fund Offerings",
+    "abilityShort": "Your choice",
+    "benefitsLabel": "Benefits:",
+    "addToSevaCart": "Add to Seva Cart",
+    "selected": "Selected",
+    "pastLabel": "Date passed",
+    "stepsLabel": "Booking steps",
+    "stepSeva": "Select seva",
+    "stepCredentials": "Sankalpam credentials",
+    "stepDate": "Date selection",
+    "panelTitleSeva": "Choose a seva",
+    "panelTextSeva": "Select a seva from the list to begin your booking.",
+    "panelEmpty": "Pick a seva with “Add to Seva Cart” and your booking will open here.",
+    "panelTitleCred": "Sankalpam Credentials",
+    "panelTextCred": "Vedic astrological credentials for sacred chants.",
+    "panelTitleDate": "Date Selection",
+    "panelTextDate": "Choose when the seva is offered.",
+    "kartha": "Kartha name (primary devotee)",
+    "gotramFull": "Gotram (Vedic lineage)",
+    "rasiFull": "Rasi (Moon sign)",
+    "nakshatramFull": "Nakshatram (Birth star)",
+    "choose": "Select",
+    "otherOption": "Other (type manually)",
+    "typeManually": "Type here",
+    "optionalNote": "Gotram, rasi and nakshatram are optional. If yours is not in the list, choose “Other” and type it.",
+    "addFamily": "Add family member",
+    "familyTitle": "Family member {n}",
+    "memberName": "Name",
+    "relation": "Relation",
+    "removeMember": "Remove this member",
+    "maxFamily": "You can add up to {n} family members.",
+    "familyHelp": "Family members are included in the same sankalpam, under the gotram above.",
+    "errMember": "Please enter the family member's name.",
+    "back": "Back",
+    "nextDate": "Next: Date Selection",
+    "changeSeva": "Change",
+    "addAndGo": "Add and go to cart",
+    "chooseAnother": "Choose another seva",
+    "decrease": "Decrease quantity",
+    "increase": "Increase quantity"
+  },
+  "shop": {
+    "cartLabel": "Selected sevas (cart)",
+    "crumbLabel": "Breadcrumb",
+    "loading": "Loading…",
+    "steps": [
+      "Cart",
+      "Details",
+      "Payment",
+      "Done"
+    ],
+    "cartTitle": "Your cart",
+    "checkoutTitle": "Checkout",
+    "paymentTitle": "Payment",
+    "confirmPageTitle": "Order confirmed",
+    "cartEmpty": "Your cart is empty",
+    "cartEmptyText": "Choose a seva to offer, and it will appear here.",
+    "browse": "Browse sevas",
+    "dateLabel": "Date",
+    "devoteeLabel": "Devotee",
+    "gotramLabel": "Gotram",
+    "nakshatramLabel": "Nakshatram",
+    "qtyLabel": "Quantity",
+    "decrease": "Decrease quantity",
+    "increase": "Increase quantity",
+    "yourAmount": "Amount of your choice",
+    "remove": "Remove",
+    "summaryTitle": "Order summary",
+    "itemsLabel": "Sevas",
+    "total": "Total",
+    "checkoutCta": "Proceed to checkout",
+    "continueShopping": "Continue browsing sevas",
+    "receiptNote": "A receipt is sent to your email after payment.",
+    "contactTitle": "Your details",
+    "contactHelp": "We use these to send your receipt and to contact you about your seva.",
+    "fName": "Full name",
+    "fPhone": "Mobile number",
+    "fEmail": "Email",
+    "fAddress": "Address",
+    "fCity": "City",
+    "fState": "State",
+    "fPin": "PIN / postal code",
+    "fCountry": "Country",
+    "errName": "Please enter your name.",
+    "errPhone": "Please enter a valid phone number.",
+    "errEmail": "Please enter a valid email address.",
+    "errAddress": "Please enter your address.",
+    "errCity": "Please enter your city.",
+    "errState": "Please enter your state.",
+    "errPin": "Please enter your PIN or postal code.",
+    "errCountry": "Please enter your country.",
+    "backToCart": "Back to cart",
+    "continuePayment": "Continue to payment",
+    "demoNote": "This is a demonstration. No real payment is taken.",
+    "methodTitle": "Choose how to pay",
+    "methods": [
+      {
+        "key": "upi",
+        "label": "UPI",
+        "hint": "Pay with any UPI app."
+      },
+      {
+        "key": "card",
+        "label": "Debit or credit card",
+        "hint": "Visa, Mastercard, RuPay and others."
+      },
+      {
+        "key": "netbanking",
+        "label": "Net banking",
+        "hint": "Pay through your bank."
+      },
+      {
+        "key": "wallet",
+        "label": "Wallets",
+        "hint": "Pay from a mobile wallet."
+      }
+    ],
+    "redirectNote": "You will be taken to the secure payment page of our payment partner to finish the payment. We never see or store your card details.",
+    "termsText": "I agree to the Terms & Conditions and the Refund & Cancellation Policy.",
+    "errTerms": "Please agree to the terms to continue.",
+    "payCta": "Pay {amount}",
+    "processing": "Processing payment…",
+    "backToDetails": "Back to details",
+    "needDetails": "Please enter your details first.",
+    "confirmTitle": "Thank you, your seva is booked",
+    "confirmText": "May your offering bring peace and happiness. The ashram has received your booking.",
+    "receiptSent": "A receipt will be sent to {email}.",
+    "orderId": "Order number",
+    "orderDate": "Date",
+    "paidWith": "Paid with",
+    "yourSevas": "Your sevas",
+    "moreSevas": "Offer another seva",
+    "backHome": "Back to home",
+    "noOrder": "There is no recent order to show.",
+    "rasiLabel": "Rasi",
+    "familyLabel": "Family members",
+    "sectionSeva": "Sevas",
+    "sectionDonation": "Donations",
+    "checkoutSeva": "Checkout sevas",
+    "checkoutDonation": "Checkout donations",
+    "continueDonations": "Continue browsing donations",
+    "browseDonations": "Browse donations",
+    "donorLabel": "Donor",
+    "streamSeva": "Seva payment",
+    "streamDonation": "Donation payment",
+    "twoPaymentsNote": "Sevas and donations are paid separately, one after the other.",
+    "confirmTitleDonation": "Thank you for your donation",
+    "confirmTextDonation": "May your offering bring peace and happiness. The ashram has received your donation.",
+    "yourDonations": "Your donations",
+    "moreDonations": "Give another donation",
+    "subscriberLabel": "Subscriber",
+    "shipLabel": "Deliver to",
+    "renewLabel": "Auto-renewal",
+    "yes": "Yes",
+    "no": "No"
+  },
+  "donate": {
+    "meta": {
+      "title": "Donations",
+      "description": "Support the Vedas, cows and trees, and the work of Sri Swami Chidbhavananda Ashramam, Vedapuri, Theni."
+    },
+    "eyebrow": "Sri Swami Chidbhavananda Ashramam",
+    "title": "Donations",
+    "intro": "Support the protection of the Vedas, cows and trees, and the daily work of the ashram.",
+    "crumbLabel": "Breadcrumb",
+    "listLabel": "Donation List",
+    "tabsLabel": "Donation sections",
+    "tabAll": "All Donations",
+    "tabDonation": "Donation List",
+    "tabCorpus": "Corpus Fund",
+    "catalogTitle": "Ways to Give",
+    "catalogTitleCorpus": "Corpus Fund",
+    "searchLabel": "Search donations",
+    "searchPlaceholder": "Search by name",
+    "sortLabel": "Sort by",
+    "sortOptions": [
+      {
+        "key": "default",
+        "label": "Featured"
+      },
+      {
+        "key": "low",
+        "label": "Amount: low to high"
+      },
+      {
+        "key": "high",
+        "label": "Amount: high to low"
+      }
+    ],
+    "countLabel": "{n} donations",
+    "noResults": "No donations match your search.",
+    "clearFilters": "Show all donations",
+    "abilityShort": "Your choice",
+    "abilityLabel": "As per your wish",
+    "closedLabel": "Closed",
+    "selected": "Selected",
+    "addToDonationCart": "Add to Donation Cart",
+    "panelTitle": "Choose a donation",
+    "panelText": "Select a donation from the list to begin.",
+    "panelEmpty": "Pick any donation from the list and this panel will open.",
+    "panelTitleForm": "Your donation",
+    "panelTextForm": "Enter the donor's name and the amount.",
+    "change": "Change",
+    "donorName": "Donor name",
+    "donorHelp": "The name that will appear on the receipt.",
+    "amountInput": "Amount",
+    "amountHelp": "Give as you wish.",
+    "qtyLabel": "Quantity",
+    "decrease": "Decrease quantity",
+    "increase": "Increase quantity",
+    "totalLabel": "Total",
+    "amountLabel": "Amount",
+    "addAndGo": "Add and go to cart",
+    "added": "Added to your cart.",
+    "viewCart": "View cart",
+    "chooseAnother": "Choose another donation",
+    "keepBrowsing": "Browse more donations",
+    "errName": "Please enter the donor's name.",
+    "errAmount": "Please enter an amount of at least {min}.",
+    "aboutTitle": "About this donation",
+    "descriptionEmpty": "A full description of this donation will be added here by the ashram.",
+    "relatedTitle": "More ways to give",
+    "backLabel": "All donations",
+    "helpTitle": "Need help with a donation?",
+    "helpText": "Write to the ashram and we will help you.",
+    "helpCta": "Contact us"
+  },
+  "audio": {
+    "meta": {
+      "title": "Audio Discourses",
+      "description": "Listen to and download the audio discourses of Pujyasri Swami Omkarananda Mahaswamigal."
+    },
+    "eyebrow": "Listen",
+    "title": "Audio Discourses",
+    "intro": "Listen to the discourses of Pujyasri Swami Omkarananda Mahaswamigal, series by series, and download them to keep.",
+    "crumbLabel": "Breadcrumb",
+    "statItems": "Discourses",
+    "statHours": "Hours",
+    "statSeries": "Series",
+    "filtersLabel": "Filter by series",
+    "all": "All",
+    "archiveTitle": "Audio Discourses Archive",
+    "searchLabel": "Search discourses",
+    "searchPlaceholder": "Search by title",
+    "sortLabel": "Sort by",
+    "sortOptions": [
+      {
+        "key": "new",
+        "label": "Newest first"
+      },
+      {
+        "key": "old",
+        "label": "Oldest first"
+      },
+      {
+        "key": "long",
+        "label": "Longest first"
+      }
+    ],
+    "countLabel": "{n} discourses",
+    "noResults": "No discourses match your search.",
+    "clearFilters": "Show all discourses",
+    "selectAll": "Select all",
+    "select": "Select {title}",
+    "batchDownload": "Batch download selected",
+    "noFiles": "The audio files will be added soon, so there is nothing to download yet.",
+    "linkCopied": "Link copied.",
+    "play": "Play",
+    "pause": "Pause",
+    "download": "Download",
+    "share": "Copy link to share",
+    "nowPlaying": "Now playing",
+    "pickOne": "Choose a discourse",
+    "pickText": "Press play on any discourse to listen here.",
+    "prev": "Previous discourse",
+    "next": "Next discourse",
+    "back15": "Back 15 seconds",
+    "fwd15": "Forward 15 seconds",
+    "seek": "Seek",
+    "speed": "Playback speed",
+    "demoNote": "Preview mode: the ashram's audio files will be added later."
+  },
+  "video": {
+    "meta": {
+      "title": "Video Lectures",
+      "description": "Watch the video lectures and events of Sri Swami Chidbhavananda Ashramam, Vedapuri."
+    },
+    "eyebrow": "Watch",
+    "title": "Video Lectures",
+    "intro": "Watch lectures and events from the ashram, grouped by series.",
+    "crumbLabel": "Breadcrumb",
+    "statItems": "Videos",
+    "statHours": "Hours",
+    "statSeries": "Series",
+    "featuredTitle": "Featured Lecture",
+    "libraryTitle": "Video Lectures",
+    "filtersLabel": "Filter by series",
+    "all": "All",
+    "searchLabel": "Search videos",
+    "searchPlaceholder": "Search by title",
+    "countLabel": "{n} videos",
+    "noResults": "No videos match your search.",
+    "clearFilters": "Show all videos",
+    "watch": "Watch",
+    "loadMore": "Show more lectures",
+    "close": "Close",
+    "comingSoon": "This video will be available soon",
+    "comingSoonText": "The ashram will add the video here.",
+    "youtubeTitle": "More on YouTube",
+    "youtubeText": "Watch the full playlists on the ashram's YouTube channel.",
+    "youtubeCta": "Open YouTube channel",
+    "newTab": "opens in a new tab"
+  },
+  "albums": {
+    "meta": {
+      "title": "Photo Albums",
+      "description": "Photographs of Pujyasri Swamiji, the ashram, festivals and the Pennai river, free to download."
+    },
+    "eyebrow": "Gallery",
+    "title": "Photo Albums",
+    "intro": "Photographs of Swamiji, the ashram and its festivals. Open any photo to view it larger or download it.",
+    "crumbLabel": "Breadcrumb",
+    "statItems": "Photos",
+    "statAlbums": "Albums",
+    "statFormat": "Download",
+    "filtersLabel": "Filter by album",
+    "all": "All",
+    "countLabel": "{n} photos",
+    "open": "Open photo",
+    "download": "Download JPG",
+    "close": "Close",
+    "prev": "Previous photo",
+    "next": "Next photo",
+    "counter": "{i} of {n}",
+    "hiresTitle": "High-resolution photos",
+    "hiresText": "Pujyasri Swamiji's high-resolution photos can be viewed and downloaded from the ashram's photo folder.",
+    "hiresCta": "Open photo folder",
+    "contactCta": "Ask the ashram",
+    "newTab": "opens in a new tab"
+  },
+  "camps": {
+    "meta": {
+      "title": "Camps",
+      "description": "Spiritual retreats and camps at Sri Swami Chidbhavananda Ashramam, Vedapuri, Theni."
+    },
+    "eyebrow": "Sri Swami Chidbhavananda Ashramam",
+    "title": "Camps",
+    "intro": "Step away from daily life to study, practise and reflect on the banks of the Pennai river.",
+    "crumbLabel": "Breadcrumb",
+    "listLabel": "Camp List",
+    "googleCta": "Register on the ashram's form",
+    "newTab": "opens in a new tab",
+    "catalogTitle": "Spiritual Retreats & Camps",
+    "catalogText": "Choose a camp, then fill in the registration form beside it.",
+    "filtersLabel": "Filter by kind of camp",
+    "all": "All Camps",
+    "kinds": {
+      "dharma": "Dharma Deepika (Youth/Family)",
+      "yogam": "Anthar Yogam (Silent Retreats)",
+      "vedanta": "Vedanta Study Intensives"
+    },
+    "countLabel": "{n} camps",
+    "noResults": "No camps in this group yet.",
+    "clearFilters": "Show all camps",
+    "perPerson": "per person",
+    "registerCta": "Register for this camp",
+    "selected": "Selected",
+    "pastLabel": "Dates passed",
+    "closedLabel": "Registration closed",
+    "change": "Change",
+    "panelEyebrow": "Retreat enrollment",
+    "panelTitle": "Register for a camp",
+    "formTitle": "Register for Camp",
+    "panelEmpty": "Pick any camp from the list and the registration form will open here.",
+    "demoNote": "This is a demonstration. Nothing is sent to the ashram yet.",
+    "scheduleTitle": "Indicative daily schedule ({camp})",
+    "fName": "Full name",
+    "fNamePh": "E.g., Anand Sivasubramanian",
+    "fAge": "Age",
+    "fGender": "Gender",
+    "choose": "Choose",
+    "male": "Male",
+    "female": "Female",
+    "fPhone": "Mobile number",
+    "fEmail": "Email",
+    "optional": "optional",
+    "fStudy": "Previous Vedanta study",
+    "fStudyPh": "E.g., read Bhagavad Gita / attended local classes",
+    "fEmergency": "Emergency contact (name & phone)",
+    "fEmergencyPh": "E.g., Santhanam (Father) - +91 98400 00000",
+    "fAccom": "Accommodation",
+    "accomYes": "I need accommodation",
+    "accomNo": "No accommodation needed",
+    "rulesTitle": "Ashram code & dress code",
+    "agree": "I agree to follow the ashram code and dress code.",
+    "submit": "Submit registration & request accommodation",
+    "errName": "Please enter your name.",
+    "errAge": "Please enter an age between 1 and 120.",
+    "errGender": "Please choose a gender.",
+    "errPhone": "Please enter a valid phone number.",
+    "errEmail": "Please enter a valid email address.",
+    "errEmergency": "Please enter an emergency contact name and phone.",
+    "errAgree": "Please agree to the ashram code to continue.",
+    "doneTitle": "Registration recorded",
+    "doneText": "This is a demonstration, so nothing has reached the ashram. Until the website is connected, please also register on the ashram's own form.",
+    "refLabel": "Reference number",
+    "helpTitle": "Need help with a camp?",
+    "helpText": "Write to the ashram and we will help you.",
+    "helpCta": "Contact us"
+  },
+  "magazine": {
+    "meta": {
+      "title": "Magazine",
+      "description": "Subscribe to the Vedaneri magazine and read past issues."
+    },
+    "crumbLabel": "Breadcrumb",
+    "eyebrow": "Monthly spiritual magazine",
+    "title": "Vedaneri Magazine",
+    "intro": "Swamiji's teachings, Vedanta, Thirukkural and Thayumanavar, delivered to your home each month. Subscribe for a year or more, or read past issues online.",
+    "subscribeCta": "Subscribe",
+    "archiveCta": "Read past issues",
+    "plansTitle": "Physical Print Subscription",
+    "plansText": "Choose a plan. The magazine is posted to your address.",
+    "issues": "issues",
+    "perPlan": "for the plan",
+    "bestValue": "Best value",
+    "selected": "Selected",
+    "choose": "Choose this plan",
+    "perIssue": "{n} per issue",
+    "planNote": "Plan prices are from the ashram. Language editions and postage are to be confirmed.",
+    "formTitle": "Subscriber Shipping Details",
+    "formText": "Where should we post your copy?",
+    "name": "Full name",
+    "phone": "Mobile number",
+    "address": "Delivery address",
+    "district": "City / District",
+    "pin": "PIN code",
+    "renew": "Renew automatically when the plan ends",
+    "renewHelp": "We will remind you before renewing. You can cancel any time.",
+    "errPlan": "Please choose a plan.",
+    "errName": "Please enter your name.",
+    "errPhone": "Enter a 10-digit mobile number.",
+    "errAddress": "Please enter the delivery address.",
+    "errDistrict": "Please enter the city or district.",
+    "errPin": "Enter a 6-digit PIN code.",
+    "totalLabel": "Total",
+    "addToCart": "Add subscription to cart",
+    "addAndGo": "Add and go to cart",
+    "added": "Added to your cart",
+    "viewCart": "View cart",
+    "another": "Subscribe for someone else",
+    "paymentNote": "Subscriptions are paid like donations, in your cart. Online payment is not connected yet (demo).",
+    "archiveTitle": "Digital Archive",
+    "archiveText": "Read or download past issues.",
+    "yearTabs": "Year",
+    "read": "Read Online",
+    "download": "Download PDF",
+    "soon": "Coming soon",
+    "archiveEmpty": "No issues for this year yet.",
+    "archiveNote": "These issues are samples. The ashram will upload the real back issues.",
+    "newTab": "opens in a new tab",
+    "helpTitle": "Questions about your subscription?",
+    "helpText": "Write to us for address changes, missing copies or bulk orders.",
+    "helpCta": "Contact us"
+  }
 }

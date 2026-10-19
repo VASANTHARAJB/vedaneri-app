@@ -1,0 +1,100 @@
+'use client';
+
+import { useState } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import type { Dictionary } from '@/lib/dictionary';
+import type { Locale } from '@/lib/i18n';
+import { rupees } from '@/lib/format';
+import { useCart } from './CartProvider';
+import OrderSummary from './OrderSummary';
+
+export default function PaymentView({ t, locale }: { t: Dictionary['shop']; locale: Locale }) {
+  const router = useRouter();
+  const { ready, lines, total, contact, placeOrder } = useCart();
+  const [method, setMethod] = useState('upi');
+  const [agree, setAgree] = useState(false);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const href = (p: string) => `/${locale}${p}`;
+
+  if (!ready) return <p role="status" className="py-16 text-center text-charcoal/70">{t.loading}</p>;
+
+  // After a successful payment the cart is emptied, so do not show the "empty" message while moving on
+  if (lines.length === 0 && !busy) {
+    return (
+      <div className="mx-auto max-w-xl rounded-2xl bg-rose/50 px-6 py-14 text-center">
+        <p className="font-display text-3xl font-semibold text-maroon">{t.cartEmpty}</p>
+        <Link href={href('/sevas')} className="mt-6 inline-block rounded-md bg-maroon px-7 py-3 font-semibold text-white hover:bg-charcoal">{t.browse}</Link>
+      </div>
+    );
+  }
+
+  if (!contact.name.trim() && !busy) {
+    return (
+      <div className="mx-auto max-w-xl rounded-2xl bg-rose/50 px-6 py-14 text-center">
+        <p className="font-serif text-lg text-charcoal">{t.needDetails}</p>
+        <Link href={href('/checkout')} className="mt-6 inline-block rounded-md bg-maroon px-7 py-3 font-semibold text-white hover:bg-charcoal">{t.backToDetails}</Link>
+      </div>
+    );
+  }
+
+  function pay() {
+    if (!agree) {
+      setError(t.errTerms);
+      return;
+    }
+    setError('');
+    setBusy(true);
+    // DEMO: no money moves. The real payment gateway is connected here later.
+    window.setTimeout(() => {
+      const order = placeOrder(method);
+      if (order) router.push(href('/order-confirmation'));
+      else setBusy(false);
+    }, 1800);
+  }
+
+  return (
+    <div className="grid items-start gap-8 lg:grid-cols-[1fr_360px]">
+      <div className="rounded-2xl bg-white p-6 shadow-lg ring-2 ring-rose sm:p-8">
+        <p className="rounded-md bg-saffron/15 px-4 py-2 text-sm font-semibold text-charcoal">{t.demoNote}</p>
+
+        <fieldset className="mt-6">
+          <legend className="font-display text-2xl font-semibold text-maroon [html[lang='ta']_&]:!leading-[1.4]">{t.methodTitle}</legend>
+          <div className="mt-4 space-y-3">
+            {t.methods.map((m) => (
+              <label key={m.key} className={`flex cursor-pointer items-start gap-3 rounded-xl border-2 p-4 transition-colors ${method === m.key ? 'border-saffron bg-rose/50' : 'border-rose hover:bg-rose/30'}`}>
+                <input type="radio" name="method" value={m.key} checked={method === m.key} onChange={() => setMethod(m.key)} className="mt-1 h-4 w-4 accent-maroon" />
+                <span>
+                  <span className="block font-bold text-charcoal">{m.label}</span>
+                  <span className="block text-sm text-charcoal/70">{m.hint}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+
+        <p className="mt-4 text-sm text-charcoal/70">{t.redirectNote}</p>
+
+        <div className="mt-6">
+          <label className="flex cursor-pointer items-start gap-3">
+            <input type="checkbox" checked={agree} onChange={(e) => { setAgree(e.target.checked); if (e.target.checked) setError(''); }} aria-describedby={error ? 'terms-error' : undefined} className="mt-1 h-4 w-4 accent-maroon" />
+            <span className="text-charcoal">{t.termsText}</span>
+          </label>
+          {error && <p id="terms-error" role="alert" className="mt-1 text-sm font-semibold text-maroon">{error}</p>}
+        </div>
+
+        <div className="mt-8 flex flex-col-reverse gap-3 sm:flex-row sm:justify-between">
+          <Link href={href('/checkout')} className="rounded-md border-2 border-maroon px-6 py-3 text-center font-semibold text-maroon hover:bg-rose">{t.backToDetails}</Link>
+          <button type="button" onClick={pay} disabled={busy} className="rounded-md bg-maroon px-8 py-3 font-semibold text-white transition-colors hover:bg-charcoal focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-saffron disabled:cursor-wait disabled:opacity-70">
+            {busy ? t.processing : t.payCta.replace('{amount}', rupees(total))}
+          </button>
+        </div>
+      </div>
+
+      <div className="lg:sticky lg:top-24">
+        <OrderSummary lines={lines} total={total} locale={locale} t={t} />
+      </div>
+    </div>
+  );
+}

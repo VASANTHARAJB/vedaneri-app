@@ -134,28 +134,50 @@ export default async function OmkaranandaPage({ params }: Params) {
         </dl>
       </div>
 
-      {/* 3. Life timeline */}
-      <section aria-labelledby="life-title" className={`bg-white ${sectionPad}`}>
+            {/* 3. Life journey: a road with numbered stops */}
+      <section aria-labelledby="life-title" className={`overflow-hidden bg-white ${sectionPad}`}>
         <div className="mx-auto max-w-5xl px-4 lg:px-8">
           <SectionTitle id="life-title" title={t.lifeTitle} />
-          <ol className="relative mt-12">
-            <span aria-hidden="true" className="absolute bottom-0 left-4 top-0 w-px bg-saffron/50 md:left-1/2" />
-            {t.timeline.map((e, i) => {
-              const right = i % 2 === 1;
-              return (
-                <li key={e.title} className="relative pb-10 pl-12 last:pb-0 md:grid md:grid-cols-2 md:gap-16 md:pl-0">
-                  <span aria-hidden="true" className="absolute left-4 top-6 h-4 w-4 -translate-x-1/2 rounded-full border-[3px] border-white bg-saffron ring-2 ring-saffron/40 md:left-1/2" />
-                  <Reveal className={right ? 'md:col-start-2' : 'md:col-start-1'}>
-                    <article className="rounded-2xl border border-rose bg-white p-6 shadow-md transition-shadow duration-300 hover:shadow-xl">
-                      <p className="inline-block rounded-full bg-maroon px-3 py-1 text-xs font-bold text-white">{e.when}</p>
-                      <h3 className="mt-3 font-display text-2xl font-semibold leading-snug text-maroon">{e.title}</h3>
-                      <p className="mt-2 text-charcoal/90">{e.text}</p>
-                    </article>
-                  </Reveal>
-                </li>
-              );
-            })}
-          </ol>
+
+          <div className="relative mt-16 pb-8 pt-4">
+            {/* The road: dark tarmac with a dashed saffron centre line */}
+            <div aria-hidden="true" className="absolute inset-y-0 left-5 w-9 -translate-x-1/2 rounded-full bg-charcoal md:left-1/2">
+              <span className="absolute inset-y-8 left-1/2 w-0.5 -translate-x-1/2 bg-[repeating-linear-gradient(to_bottom,#D97706_0_12px,transparent_12px_26px)]" />
+            </div>
+
+            {/* Start of the journey */}
+            <span aria-hidden="true" className="absolute -top-5 left-5 z-10 flex h-11 w-11 -translate-x-1/2 items-center justify-center rounded-full bg-maroon text-saffron ring-4 ring-white md:left-1/2">
+              <Flame />
+            </span>
+            {/* Destination flag */}
+            <span aria-hidden="true" className="absolute -bottom-2 left-5 z-10 flex h-11 w-11 -translate-x-1/2 items-center justify-center rounded-full bg-saffron text-charcoal ring-4 ring-white md:left-1/2">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M5 3h2v18H5zM8 4h11l-3 4 3 4H8z" /></svg>
+            </span>
+
+            <ol className="relative">
+              {t.timeline.map((e, i) => {
+                const right = i % 2 === 1;
+                return (
+                  <li key={e.title} className="relative pb-12 pl-14 pt-4 last:pb-6 md:grid md:grid-cols-2 md:pl-0">
+                    {/* Numbered stop on the road */}
+                    <span aria-hidden="true" className="absolute left-5 top-9 z-10 flex h-10 w-10 -translate-x-1/2 items-center justify-center rounded-full bg-saffron font-bold text-charcoal shadow-lg ring-4 ring-white md:left-1/2">
+                      {i + 1}
+                    </span>
+
+                    <Reveal className={`relative ${right ? 'md:col-start-2 md:pl-14' : 'md:col-start-1 md:pr-14'}`}>
+                      {/* Branch from the road to the card */}
+                      <span aria-hidden="true" className={`absolute top-[2.9rem] h-0.5 w-5 bg-saffron -left-5 ${right ? 'md:left-0 md:w-14' : 'md:left-auto md:right-0 md:w-14'}`} />
+                      <article className="group rounded-2xl border-2 border-rose bg-white p-5 shadow-md transition-colors duration-300 hover:border-saffron sm:p-6">
+                        <p className="inline-block rounded-md bg-maroon px-3 py-1 text-xs font-bold text-white">{e.when}</p>
+                        <h3 className="mt-3 font-display text-2xl font-semibold leading-snug text-maroon">{e.title}</h3>
+                        <p className="mt-2 text-charcoal/90">{e.text}</p>
+                      </article>
+                    </Reveal>
+                  </li>
+                );
+              })}
+            </ol>
+          </div>
         </div>
       </section>
 
