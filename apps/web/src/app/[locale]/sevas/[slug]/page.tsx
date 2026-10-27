@@ -1,54 +1,117 @@
 import type { Metadata } from 'next';
-import Image from 'next/image';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import SevaCard from '@/components/sevas/SevaCard';
-import SankalpamWizard from '@/components/sevas/SankalpamWizard';
-import SectionTitle from '@/components/SectionTitle';
-import { SEVAS, getSeva, txt } from '@/data/sevas';
+import { cache } from 'react';
 import { getDictionary } from '@/lib/dictionary';
-import { rupees, sevaPhoto } from '@/lib/format';
-import { isLocale, locales } from '@/lib/i18n';
+import { rupees } from '@/lib/format';
+import { isLocale } from '@/lib/i18n';
+import SevaCalendarCard from '@/components/sevas/SevaCalendarCard';
 
 type Params = { params: Promise<{ locale: string; slug: string }> };
 
-export const dynamicParams = false;
-export const generateStaticParams = () => locales.flatMap((locale) => SEVAS.map((s) => ({ locale, slug: s.slug })));
+export const dynamicParams = true;
+
+export interface LiveOffering {
+  id: string | number;
+  slug: string;
+  title_en: string;
+  title_ta: string;
+  display_title_en?: string;
+  display_title_ta?: string;
+  description_en: string;
+  description_ta: string;
+  amount: number;
+  price_type: 'fixed' | 'custom';
+  category: 'seva' | 'corpus';
+  status: 'published' | 'draft';
+  image_url?: string;
+  last_updated?: string;
+  // Panchangam & Recurrence properties
+  is_event_seva?: boolean;
+  recurrence_type?: 'none' | 'annual' | 'monthly_tithi';
+  event_date?: string | null;
+  tithi_trigger?: string;
+  panchangam_tag?: string;
+}
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
+
+function getImageUrl(url?: string): string {
+  if (!url) return '';
+  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) {
+    return url;
+  }
+  const backendOrigin = API_BASE.replace(/\/api\/v1\/?$/, '');
+  const cleanPath = url.startsWith('/') ? url : `/${url}`;
+  return `${backendOrigin}${cleanPath}`;
+}
+
+function formatDisplayDate(d?: string | null): string {
+  if (!d) return '';
+  const clean = String(d).split('T')[0];
+  const parts = clean.split('-');
+  if (parts.length === 3) return `${parts[2]}.${parts[1]}.${parts[0]}`;
+  return d;
+}
+
+// cache() makes generateMetadata and the page share ONE API request.
+// Only PUBLISHED offerings are returned, so drafts cannot be opened or booked by URL.
+const getLiveOfferingBySlug = cache(async (slug: string): Promise<LiveOffering | null> => {
+  try {
+    const res = await fetch(`${API_BASE}/offerings`, { cache: 'no-store' });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const sevas: LiveOffering[] = data.sevas || data.offerings || [];
+    return (
+      sevas.find(
+        (item) => item.status === 'published' && (item.slug === slug || String(item.id) === slug)
+      ) || null
+    );
+  } catch (err) {
+    console.error('Error fetching seva by slug:', err);
+    return null;
+  }
+});
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { locale, slug } = await params;
-  const seva = getSeva(slug);
-  if (!isLocale(locale) || !seva) return {};
+  if (!isLocale(locale)) return {};
+  const seva = await getLiveOfferingBySlug(slug);
+  if (!seva) return {};
   const t = getDictionary(locale);
-  return { title: `${txt(seva.name, locale)} | ${t.site.name}` };
+  const title = locale === 'ta' ? seva.title_ta || seva.title_en : seva.title_en;
+  return { title: `${title} | ${t.site.name}` };
 }
 
-// Where Swamiji's blessing hand is inside the photo, as % of the picture (0,0 = top-left). Adjust these two numbers to match the image.
-const HAND = { x: 24, y: 46 };
+/* ---------- Icons ---------- */
+const FOCUS =
+  'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ea580c]';
 
-// Sparkles around the hand: offset from the hand in %, size in px, animation delay in seconds
-const SPARKLES = [
-  { dx: 0, dy: -6, size: 22, delay: 0 },
-  { dx: -7, dy: 0, size: 14, delay: 0.6 },
-  { dx: 6, dy: -2, size: 16, delay: 1.2 },
-  { dx: -4, dy: 7, size: 12, delay: 1.8 },
-  { dx: 5, dy: 6, size: 18, delay: 0.3 },
-  { dx: -10, dy: -8, size: 10, delay: 1.5 },
-  { dx: 10, dy: 3, size: 10, delay: 0.9 },
-  { dx: 1, dy: 11, size: 12, delay: 2.1 },
-];
-
-const SPARKLE_CSS = `
-@keyframes sparkle-twinkle { 0%,100% { opacity: .15; transform: scale(.5) rotate(0deg); } 50% { opacity: 1; transform: scale(1.15) rotate(45deg); } }
-.sparkle { animation: sparkle-twinkle 2.6s ease-in-out infinite; filter: drop-shadow(0 0 6px rgba(217,119,6,.9)); }
-@media (prefers-reduced-motion: reduce) { .sparkle { animation: none; opacity: .8; } }
-`;
-
-function Calendar() {
+function CalendarIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0">
-      <rect x="3" y="5" width="18" height="16" rx="2" />
-      <path d="M3 10h18M8 3v4M16 3v4" />
+    <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-[#ea580c]">
+      <rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" />
+    </svg>
+  );
+}
+function RupeeIcon() {
+  return (
+    <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-[#ea580c]">
+      <path d="M6 4h12M6 9h12M6 4c6 0 6 10-1 10h-0l8 6" />
+    </svg>
+  );
+}
+function ArrowLeftIcon() {
+  return (
+    <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+      <path d="M19 12H5M12 19l-7-7 7-7" />
+    </svg>
+  );
+}
+function ChevronRightIcon() {
+  return (
+    <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-slate-400">
+      <path d="M9 5l7 7-7 7" />
     </svg>
   );
 }
@@ -56,143 +119,174 @@ function Calendar() {
 export default async function SevaDetailPage({ params }: Params) {
   const { locale, slug } = await params;
   if (!isLocale(locale)) notFound();
-  const seva = getSeva(slug);
+
+  const seva = await getLiveOfferingBySlug(slug);
   if (!seva) notFound();
 
   const dict = getDictionary(locale);
   const t = dict.sevas;
-  const name = txt(seva.name, locale);
-  const kindLabel = seva.kind === 'corpus' ? t.tabCorpus : t.filters.find((f) => f.key === seva.kind)?.label ?? '';
-  const paragraphs = seva.description[locale];
-  const related = SEVAS.filter((s) => s.kind === seva.kind && s.slug !== seva.slug).slice(0, 3);
+  const isTa = locale === 'ta';
+  const isCorpus = seva.category === 'corpus';
+
+  const name = isTa ? seva.title_ta || seva.title_en : seva.title_en;
+  const desc = isTa ? seva.description_ta || seva.description_en : seva.description_en;
+  const kindLabel = isCorpus ? (isTa ? 'மூலதன நிதி' : 'Corpus Fund') : (isTa ? 'சேவை பட்டியல்' : 'Seva List');
+  const fullImageUrl = getImageUrl(seva.image_url);
   const href = (p: string) => `/${locale}${p}`;
 
+  const paragraphs = desc ? desc.split('\n').filter((p) => p.trim().length > 0) : [];
+  const [leadParagraph, ...restParagraphs] = paragraphs;
+
+  // Price display (same labels as the offering cards)
+  const isOpenAmount = seva.price_type === 'custom' || !(Number(seva.amount) > 0);
+  const openAmountLabel = isCorpus
+    ? isTa ? 'பகுதி கட்டணம்' : 'Part Payment'
+    : isTa ? 'யதாசக்தி' : 'Yathashakti';
+  const priceText = isOpenAmount ? openAmountLabel : rupees(seva.amount);
+
+  // "When" text according to recurrence
+  let whenText = isTa ? 'தினசரி காலை & மாலை சங்கல்பம்' : 'Daily Morning & Evening Sankalpam';
+  if (seva.recurrence_type === 'annual') {
+    whenText = seva.event_date
+      ? `${isTa ? 'விசேஷ நாள்' : 'Annual Occasion'}: ${formatDisplayDate(seva.event_date)}`
+      : isTa
+      ? 'வருடாந்திர விசேஷ நாள் (தேதி விரைவில் அறிவிக்கப்படும்)'
+      : 'Annual Occasion (date to be announced)';
+  } else if (seva.recurrence_type === 'monthly_tithi') {
+    whenText = `${isTa ? 'மாதாந்திர' : 'Monthly'} ${seva.tithi_trigger || 'Tithi'}`;
+    if (seva.event_date) {
+      whenText += ` • ${isTa ? 'அடுத்த நாள்' : 'Next'}: ${formatDisplayDate(seva.event_date)}`;
+    }
+  }
+
   return (
-    <main>
-      <section className="bg-gradient-to-b from-rose/80 to-white">
-        <nav aria-label={t.crumbLabel} className="mx-auto max-w-6xl px-4 pb-2 pt-6 text-sm text-charcoal/80 lg:px-8">
-          <ol className="flex flex-wrap items-center gap-2">
-            <li><Link href={href('')} className="underline-offset-4 hover:text-maroon hover:underline">{dict.nav.home}</Link></li>
-            <li aria-hidden="true">/</li>
-            <li><Link href={href('/sevas')} className="underline-offset-4 hover:text-maroon hover:underline">{dict.nav.seva}</Link></li>
-            <li aria-hidden="true">/</li>
-            <li aria-current="page" className="font-semibold text-maroon">{name}</li>
-          </ol>
-        </nav>
-      </section>
+    <main className="bg-white pb-24 lg:pb-16 text-slate-900">
+      {/* 1. Header: navigation, title, key facts */}
+      <section className="border-b border-[#f0e2c8] bg-gradient-to-b from-[#fff8ec] via-white to-white">
+        <div className="mx-auto max-w-7xl px-4 pb-8 pt-5 sm:px-6 lg:px-8 lg:pb-10">
+          <Link
+            href={href('/sevas')}
+            className={`inline-flex items-center gap-1.5 rounded-full text-xs font-bold text-[#3b0d0d] hover:underline sm:hidden ${FOCUS}`}
+          >
+            <ArrowLeftIcon />
+            {dict.nav.seva}
+          </Link>
 
-      {/* Photo on the left, details and booking form on the right */}
-      <section className="bg-white pb-12 pt-4 sm:pb-16">
-        <div className="mx-auto grid max-w-6xl items-start gap-10 px-4 lg:grid-cols-2 lg:gap-14 lg:px-8">
-          <div className="lg:sticky lg:top-24">
-            <div className="relative pb-4 pr-4">
-              <div aria-hidden="true" className="absolute inset-0 translate-x-4 translate-y-4 rounded-2xl bg-maroon" />
-              <div role="img" aria-label={name} className="relative aspect-[4/3] w-full rounded-2xl bg-maroon bg-cover bg-center shadow-xl ring-4 ring-white" style={{ backgroundImage: sevaPhoto(seva.slug) }} />
+          <nav aria-label="breadcrumb" className="hidden text-xs text-[#8a5a44] sm:block">
+            <ol className="flex flex-wrap items-center gap-1.5 font-semibold">
+              <li>
+                <Link href={href('')} className={`hover:text-[#3b0d0d] hover:underline ${FOCUS}`}>
+                  {dict.nav.home}
+                </Link>
+              </li>
+              <li aria-hidden="true"><ChevronRightIcon /></li>
+              <li>
+                <Link href={href('/sevas')} className={`hover:text-[#3b0d0d] hover:underline ${FOCUS}`}>
+                  {dict.nav.seva}
+                </Link>
+              </li>
+              <li aria-hidden="true"><ChevronRightIcon /></li>
+              <li aria-current="page" className="font-extrabold text-[#3b0d0d]">{name}</li>
+            </ol>
+          </nav>
+
+          <div className="mt-6 flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between lg:gap-10">
+            <div className="min-w-0">
+              <span className="inline-block rounded-full bg-[#fff3df] border border-[#fde68a] px-3 py-1 text-[11px] font-extrabold uppercase tracking-wider text-[#c2410c]">
+                {kindLabel}
+              </span>
+              <h1 className="mt-3 max-w-3xl font-serif text-3xl font-extrabold leading-tight text-[#3b0d0d] sm:text-4xl lg:text-5xl">
+                {name}
+              </h1>
+
+              <dl className="mt-6 flex flex-wrap items-center gap-x-8 gap-y-4">
+                <div className="flex items-center gap-3">
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#fff3df] border border-[#fde68a]">
+                    <RupeeIcon />
+                  </span>
+                  <div className="min-w-0">
+                    <dt className="text-[11px] font-bold uppercase tracking-wider text-[#8a5a44]">
+                      {t.amountLabel}
+                    </dt>
+                    <dd className="font-serif text-xl font-bold leading-snug text-[#3b0d0d]">
+                      {priceText}
+                    </dd>
+                  </div>
+                </div>
+
+                <div aria-hidden="true" className="hidden h-10 w-px bg-[#f0e2c8] sm:block" />
+
+                <div className="flex items-center gap-3">
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#fff3df] border border-[#fde68a]">
+                    <CalendarIcon />
+                  </span>
+                  <div className="min-w-0">
+                    <dt className="text-[11px] font-bold uppercase tracking-wider text-[#8a5a44]">
+                      {t.whenLabel}
+                    </dt>
+                    <dd className="font-serif text-base font-bold leading-snug text-[#3b0d0d] sm:text-lg">
+                      {whenText}
+                    </dd>
+                  </div>
+                </div>
+              </dl>
             </div>
           </div>
+        </div>
+      </section>
 
-          <div>
-            <p className="inline-block rounded-full bg-maroon px-4 py-1 text-xs font-bold uppercase tracking-wider text-white [html[lang='ta']_&]:tracking-normal">{kindLabel}</p>
-            <h1 className="mt-3 font-display text-4xl font-semibold leading-tight text-maroon sm:text-5xl [html[lang='ta']_&]:!leading-[1.3] [html[lang='ta']_&]:text-3xl [html[lang='ta']_&]:sm:text-4xl">{name}</h1>
-
-            {seva.benefit && <p className="mt-3 font-serif text-lg text-charcoal/90"><span className="font-semibold">{t.benefitsLabel}</span> {txt(seva.benefit, locale)}</p>}
-
-            <dl className="mt-5 grid gap-4 rounded-xl bg-rose/50 p-5 sm:grid-cols-2">
-              <div>
-                <dt className="text-xs font-bold uppercase tracking-wider text-maroon [html[lang='ta']_&]:tracking-normal">{t.amountLabel}</dt>
-                <dd className="mt-1 font-display text-3xl font-semibold text-charcoal">
-                  {seva.amount > 0 ? rupees(seva.amount) : <span className="text-2xl text-saffron [html[lang='ta']_&]:text-xl">{t.abilityLabel}</span>}
-                </dd>
+      {/* 2. Story (Left) + Calendar card (Right) */}
+      <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 lg:py-12">
+        <div className="grid gap-10 lg:grid-cols-12 lg:gap-12">
+          <div className="space-y-8 lg:col-span-7">
+            {fullImageUrl ? (
+              <div className="relative aspect-[16/10] w-full overflow-hidden rounded-3xl bg-[#fff3df] shadow-sm border border-[#f0e2c8]">
+                <img
+                  src={fullImageUrl}
+                  alt={name}
+                  className="h-full w-full object-cover"
+                />
               </div>
-              <div>
-                <dt className="text-xs font-bold uppercase tracking-wider text-maroon [html[lang='ta']_&]:tracking-normal">{t.whenLabel}</dt>
-                <dd className="mt-1 flex items-center gap-2 text-lg font-semibold text-charcoal"><Calendar />{txt(seva.when, locale)}</dd>
+            ) : (
+              <div className="flex aspect-[16/10] w-full items-center justify-center rounded-3xl bg-gradient-to-br from-[#fff3df] to-[#fdebec] text-6xl shadow-sm border border-[#f0e2c8]">
+                {isCorpus ? '🏛️' : '🪔'}
               </div>
-            </dl>
+            )}
 
-            <div className="mt-6">
-              <SankalpamWizard seva={seva} locale={locale} t={t} fixed />
+            <div>
+              <h2 className="font-serif text-2xl font-bold text-[#3b0d0d] sm:text-3xl">
+                {t.aboutTitle}
+              </h2>
+              <div className="mt-2 h-1 w-14 rounded-full bg-[#ea580c]" aria-hidden="true" />
+
+              <div className="mt-6 space-y-4 font-sans text-sm sm:text-base leading-relaxed text-[#5b2a1a]">
+                {leadParagraph ? (
+                  <>
+                    <p className="text-base sm:text-lg font-medium leading-relaxed text-[#3b0d0d]">
+                      {leadParagraph}
+                    </p>
+                    {restParagraphs.map((p, i) => (
+                      <p key={i} className="text-sm sm:text-base text-[#5b2a1a]/90">
+                        {p}
+                      </p>
+                    ))}
+                  </>
+                ) : (
+                  <p className="italic text-[#8a5a44]">
+                    {isTa ? 'விவரங்கள் விரைவில் புதுப்பிக்கப்படும்.' : t.descriptionEmpty}
+                  </p>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      </section>
 
-      {/* About */}
-      <section aria-labelledby="about-title" className="bg-rose/50 py-12 sm:py-16">
-        <div className="mx-auto max-w-4xl px-4 lg:px-8">
-          <h2 id="about-title" className="font-display text-3xl font-semibold text-maroon sm:text-4xl [html[lang='ta']_&]:!leading-[1.3]">{t.aboutTitle}</h2>
-          <div aria-hidden="true" className="mt-3 flex items-center gap-3"><span className="h-px w-12 bg-saffron" /><span className="h-2 w-2 rotate-45 bg-saffron" /><span className="h-px w-12 bg-saffron" /></div>
-          {paragraphs.length > 0 ? (
-            paragraphs.map((p) => <p key={p} className="mt-5 font-serif text-lg leading-relaxed text-charcoal">{p}</p>)
-          ) : (
-            <p className="mt-5 font-serif text-lg leading-relaxed text-charcoal/80">{t.descriptionEmpty}</p>
-          )}
-
-          {seva.includes.length > 0 && (
-            <div className="mt-10">
-              <h3 className="font-display text-2xl font-semibold text-maroon">{t.includesTitle}</h3>
-              <ul className="mt-4 divide-y divide-rose overflow-hidden rounded-xl bg-white ring-1 ring-rose">
-                {seva.includes.map((i) => (
-                  <li key={i.label.en} className="flex items-start justify-between gap-4 px-5 py-3">
-                    <span className="text-charcoal">{txt(i.label, locale)}</span>
-                    <span className="shrink-0 font-bold text-charcoal">{rupees(i.price)}</span>
-                  </li>
-                ))}
-              </ul>
+          <aside id="date-selector" className="lg:col-span-5">
+            <div className="lg:sticky lg:top-24">
+              <SevaCalendarCard seva={seva} locale={locale} />
             </div>
-          )}
+          </aside>
         </div>
       </section>
-
-      {/* Swamiji's blessing: cut-out photo with sparkles at the raised hand, and the help message */}
-      <section aria-labelledby="blessing-title" className="relative isolate overflow-hidden bg-gradient-to-br from-maroon to-charcoal text-white">
-        <style>{SPARKLE_CSS}</style>
-        <div aria-hidden="true" className="absolute -left-24 top-1/2 -z-10 h-96 w-96 -translate-y-1/2 rounded-full bg-saffron/20 blur-3xl" />
-        <div className="mx-auto grid max-w-6xl items-end gap-8 px-4 pt-12 sm:pt-16 lg:grid-cols-2 lg:gap-12 lg:px-8">
-          <div className="pb-12 text-center sm:pb-16 lg:text-left">
-            <h2 id="blessing-title" className="font-display text-3xl font-semibold leading-tight !text-white sm:text-4xl [html[lang='ta']_&]:!leading-[1.35]">{t.helpTitle}</h2>
-            <div aria-hidden="true" className="mt-3 flex items-center justify-center gap-3 lg:justify-start"><span className="h-px w-12 bg-saffron" /><span className="h-2 w-2 rotate-45 bg-saffron" /><span className="h-px w-12 bg-saffron" /></div>
-            <p className="mx-auto mt-5 max-w-xl font-serif text-lg leading-relaxed text-white/90 lg:mx-0">{t.helpText}</p>
-            <Link href={href('/contact')} className="mt-7 inline-flex items-center rounded-full bg-saffron px-7 py-3 font-semibold text-charcoal transition-colors hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
-              {t.helpCta}
-            </Link>
-          </div>
-
-          <div className="relative mx-auto w-full max-w-sm lg:max-w-md">
-            <div className="relative aspect-[3/4] w-full">
-              <Image src="/images/swamiji-cutout.png" alt="" fill sizes="(min-width: 1024px) 28rem, 24rem" className="object-contain object-bottom drop-shadow-2xl" />
-              {SPARKLES.map((s, i) => (
-                <svg
-                  key={i}
-                  aria-hidden="true"
-                  viewBox="0 0 24 24"
-                  className="sparkle absolute text-saffron"
-                  style={{ left: `calc(${HAND.x}% + ${s.dx}%)`, top: `calc(${HAND.y}% + ${s.dy}%)`, width: s.size, height: s.size, marginLeft: -s.size / 2, marginTop: -s.size / 2, animationDelay: `${s.delay}s` }}
-                >
-                  <path d="M12 0c.8 6.2 5.8 11.2 12 12-6.2.8-11.2 5.8-12 12-.8-6.2-5.8-11.2-12-12C6.2 11.2 11.2 6.2 12 0z" fill="currentColor" />
-                </svg>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Related sevas */}
-      {related.length > 0 && (
-        <section aria-labelledby="related-title" className="bg-rose/50 py-12 sm:py-16">
-          <div className="mx-auto max-w-6xl px-4 lg:px-8">
-            <SectionTitle id="related-title" title={t.relatedTitle} />
-            <ul className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {related.map((s) => (
-                <li key={s.slug} className="h-full"><SevaCard seva={s} locale={locale} t={t} /></li>
-              ))}
-            </ul>
-            <p className="mt-8 text-center">
-              <Link href={href('/sevas')} className="font-bold text-maroon underline underline-offset-4">{t.backLabel}</Link>
-            </p>
-          </div>
-        </section>
-      )}
     </main>
   );
 }

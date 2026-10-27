@@ -1,181 +1,190 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import type { Dictionary } from '@/lib/dictionary';
-import type { Locale } from '@/lib/i18n';
-import { todayISO } from '@/lib/format';
-import { SEVAS, txt, type Seva } from '@/data/sevas';
-import SevaOfferCard from './sevas/SevaOfferCard';
-import SankalpamWizard from './sevas/SankalpamWizard';
+import React, { useMemo, useState } from 'react';
+import Link from 'next/link';
+import type { Offering } from '@/type/offering';
 
-type T = Dictionary['sevas'];
-type Tab = 'all' | 'seva' | 'corpus';
+interface SevaListProps {
+  t: any;
+  locale: string;
+  initialOfferings?: Offering[];
+}
 
-// The seva catalogue: tabs (All / Seva List / Corpus List), search and sort, the offering cards,
-// and the booking panel on the right that opens when a card is picked.
-export default function SevaList({ t, locale }: { t: T; locale: Locale }) {
-  const [tab, setTab] = useState<Tab>('all');
-  const [kind, setKind] = useState('all');
-  const [query, setQuery] = useState('');
-  const [sort, setSort] = useState('default');
-  const [selected, setSelected] = useState<Seva | null>(null);
-  const [today, setToday] = useState('');
-  const panelRef = useRef<HTMLDivElement>(null);
+type CategoryFilter = 'all' | 'seva' | 'corpus';
 
-  useEffect(() => setToday(todayISO()), []);
-
-  const counts: Record<Tab, number> = {
-    all: SEVAS.length,
-    seva: SEVAS.filter((s) => s.kind !== 'corpus').length,
-    corpus: SEVAS.filter((s) => s.kind === 'corpus').length,
-  };
-
-  const shown = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const list = SEVAS.filter(
-      (s) =>
-        (tab === 'all' || (tab === 'corpus' ? s.kind === 'corpus' : s.kind !== 'corpus')) &&
-        (tab === 'corpus' || kind === 'all' || s.kind === kind) &&
-        (!q || txt(s.name, locale).toLowerCase().includes(q)),
-    );
-    if (sort === 'low') return [...list].sort((a, b) => (a.amount || Infinity) - (b.amount || Infinity));
-    if (sort === 'high') return [...list].sort((a, b) => b.amount - a.amount);
-    return list;
-  }, [tab, kind, query, sort, locale]);
-
-  const isPast = (s: Seva) => !!today && !!s.to && s.to < today;
-  const isClosed = (s: Seva) => s.status !== 'open' || isPast(s);
-
-  function pick(s: Seva) {
-    setSelected(s);
-    // On a phone the panel sits below the cards, so bring it into view
-    if (typeof window !== 'undefined' && !window.matchMedia('(min-width: 1024px)').matches) {
-      panelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
+function getImageUrl(url?: string): string {
+  if (!url) return '';
+  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) {
+    return url;
   }
+  const backendOrigin = (
+    process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1'
+  ).replace(/\/api\/v1\/?$/, '');
+  const cleanPath = url.startsWith('/') ? url : `/${url}`;
+  return `${backendOrigin}${cleanPath}`;
+}
 
-  const reset = () => {
-    setTab('all');
-    setKind('all');
-    setQuery('');
-    setSort('default');
-  };
+export default function SevaList({ locale, initialOfferings = [] }: SevaListProps) {
+  const [selectedCategory, setSelectedCategory] = useState<CategoryFilter>('all');
+  const isTa = locale === 'ta';
 
-  const tabs: { key: Tab; label: string }[] = [
-    { key: 'all', label: t.tabAll },
-    { key: 'seva', label: t.tabSeva },
-    { key: 'corpus', label: t.tabCorpus },
+  const counts = useMemo(
+    () => ({
+      all: initialOfferings.length,
+      seva: initialOfferings.filter((i) => i.category === 'seva').length,
+      corpus: initialOfferings.filter((i) => i.category === 'corpus').length,
+    }),
+    [initialOfferings]
+  );
+
+  const filteredOfferings = initialOfferings.filter((item) => {
+    if (selectedCategory === 'all') return true;
+    return item.category === selectedCategory;
+  });
+
+  const tabs: { key: CategoryFilter; label: string }[] = [
+    { key: 'all', label: isTa ? 'அனைத்தும்' : 'All Offerings' },
+    { key: 'seva', label: isTa ? 'சேவை பட்டியல்' : 'Seva List' },
+    { key: 'corpus', label: isTa ? 'மூலதன நிதி' : 'Corpus Fund' },
   ];
 
   return (
-    <div id="seva-list" className="scroll-mt-24">
-      {/* Tabs */}
-      <div role="group" aria-label={t.tabsLabel} className="flex flex-wrap gap-3">
-        {tabs.map((x) => {
-          const on = tab === x.key;
+    <div className="space-y-10">
+      {/* 1. Category tabs */}
+      <div
+        role="tablist"
+        aria-label={isTa ? 'வகை' : 'Category'}
+        className="flex flex-wrap items-end justify-center gap-x-8 gap-y-2 border-b border-sand"
+      >
+        {tabs.map((tab) => {
+          const active = selectedCategory === tab.key;
           return (
             <button
-              key={x.key}
+              key={tab.key}
               type="button"
-              aria-pressed={on}
-              onClick={() => setTab(x.key)}
-              className={`rounded-md border px-5 py-2 text-sm font-bold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-saffron ${
-                on ? 'border-maroon bg-maroon text-white' : 'border-maroon/30 bg-white text-maroon hover:bg-rose'
+              role="tab"
+              aria-selected={active}
+              onClick={() => setSelectedCategory(tab.key)}
+              className={`-mb-px cursor-pointer border-b-2 px-1 pb-3 text-sm font-semibold tracking-wide transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-saffron ${
+                active
+                  ? 'border-maroon text-maroon'
+                  : 'border-transparent text-charcoal/60 hover:text-charcoal'
               }`}
             >
-              {x.label} <span className={on ? 'text-rose' : 'text-charcoal/60'}>({counts[x.key]})</span>
+              {tab.label}
+              <span className={`ml-2 text-xs font-medium ${active ? 'text-maroon/70' : 'text-charcoal/40'}`}>
+                {counts[tab.key]}
+              </span>
             </button>
           );
         })}
       </div>
 
-      <div className="mt-8 flex flex-col gap-8 lg:flex-row lg:items-start">
-        {/* Catalogue */}
-        <div className="min-w-0 flex-1">
-          <h2 className="font-display text-3xl font-semibold text-maroon sm:text-4xl [html[lang='ta']_&]:!leading-[1.3] [html[lang='ta']_&]:text-2xl [html[lang='ta']_&]:sm:text-3xl">
-            {tab === 'corpus' ? t.catalogTitleCorpus : t.catalogTitle}
-          </h2>
+      {/* 2. Offerings grid */}
+      {filteredOfferings.length === 0 ? (
+        <div className="rounded-md border border-sand bg-white py-16 text-center">
+          <p className="font-serif text-lg text-charcoal/70">
+            {isTa
+              ? 'தற்போது சேவைகள் எதுவும் கிடைக்கவில்லை.'
+              : 'No offerings currently available in this category.'}
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-7 md:grid-cols-2 lg:grid-cols-3">
+          {filteredOfferings.map((item) => {
+            const title = isTa ? item.title_ta || item.title_en : item.title_en;
+            const desc = isTa ? item.description_ta || item.description_en : item.description_en;
+            const fullImg = getImageUrl(item.image_url);
+            const detailHref = `/${locale}/sevas/${item.slug || item.id}`;
+            const isCorpus = item.category === 'corpus';
+            const categoryLabel = isCorpus ? (isTa ? 'மூலதன நிதி' : 'Corpus Fund') : isTa ? 'சேவை' : 'Seva';
+            const isCustom = item.price_type === 'custom';
 
-          <div className="mt-5 flex flex-col gap-3 sm:flex-row">
-            <label className="block sm:flex-1">
-              <span className="sr-only">{t.searchLabel}</span>
-              <input
-                type="search"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder={t.searchPlaceholder}
-                className="w-full rounded-md border border-rose bg-white px-4 py-2.5 text-charcoal placeholder:text-charcoal/50 focus:border-saffron focus:outline-none focus-visible:ring-2 focus-visible:ring-saffron/40"
-              />
-            </label>
-            <label className="block sm:w-52">
-              <span className="sr-only">{t.sortLabel}</span>
-              <select
-                value={sort}
-                onChange={(e) => setSort(e.target.value)}
-                className="w-full rounded-md border border-rose bg-white px-3 py-2.5 text-charcoal focus:border-saffron focus:outline-none focus-visible:ring-2 focus-visible:ring-saffron/40"
+            // Non-fixed label: Seva List -> Yathashakti, Corpus -> Part Payment
+            const customLabel = isCorpus
+              ? isTa
+                ? 'பகுதி கட்டணம்'
+                : 'Part Payment'
+              : isTa
+              ? 'யதாசக்தி'
+              : 'Yathashakti';
+
+            return (
+              <article
+                key={item.id}
+                className="group flex flex-col overflow-hidden rounded-md border border-sand bg-white transition-shadow duration-300 hover:shadow-lg"
               >
-                {t.sortOptions.map((o) => (
-                  <option key={o.key} value={o.key}>{o.label}</option>
-                ))}
-              </select>
-            </label>
-          </div>
+                {/* Category accent line */}
+                <div aria-hidden="true" className={`h-1 w-full ${isCorpus ? 'bg-maroon' : 'bg-saffron'}`} />
 
-          {/* Kinds inside the Seva List */}
-          {tab !== 'corpus' && (
-            <div role="group" aria-label={t.filterLabel} className="mt-4 flex flex-wrap gap-2">
-              {t.filters.map((f) => {
-                const on = kind === f.key;
-                return (
-                  <button
-                    key={f.key}
-                    type="button"
-                    aria-pressed={on}
-                    onClick={() => setKind(f.key)}
-                    className={`rounded-full px-4 py-1.5 text-sm font-semibold ring-1 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-saffron ${
-                      on ? 'bg-saffron text-charcoal ring-saffron' : 'bg-white text-maroon ring-saffron/60 hover:bg-rose'
+                {/* Image */}
+                <Link
+                  href={detailHref}
+                  className="relative block aspect-[4/3] w-full overflow-hidden bg-sand/20"
+                  tabIndex={-1}
+                  aria-hidden="true"
+                >
+                  {fullImg ? (
+                    <img
+                      src={fullImg}
+                      alt=""
+                      className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-cream to-sand/50">
+                      <span className="font-display text-lg font-semibold uppercase tracking-[0.25em] text-charcoal/30">
+                        {categoryLabel}
+                      </span>
+                    </div>
+                  )}
+                </Link>
+
+                {/* Body */}
+                <div className="flex flex-1 flex-col p-6">
+                  <p
+                    className={`text-[11px] font-bold uppercase tracking-[0.18em] ${
+                      isCorpus ? 'text-maroon' : 'text-charcoal/60'
                     }`}
                   >
-                    {f.label}
-                  </button>
-                );
-              })}
-            </div>
-          )}
+                    {categoryLabel}
+                  </p>
 
-          <p role="status" className="mt-4 text-sm font-semibold text-charcoal/70">{t.countLabel.replace('{n}', String(shown.length))}</p>
+                  <h3 className="mt-2 font-display text-xl font-semibold leading-snug text-charcoal transition-colors group-hover:text-maroon [html[lang='ta']_&]:leading-[1.4]">
+                    <Link href={detailHref} className="focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-saffron">
+                      {title}
+                    </Link>
+                  </h3>
 
-          {shown.length > 0 ? (
-            <ul className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
-              {shown.map((s) => (
-                <li key={s.slug} className="h-full">
-                  <SevaOfferCard
-                    seva={s}
-                    locale={locale}
-                    t={t}
-                    selected={selected?.slug === s.slug}
-                    closed={isClosed(s)}
-                    past={isPast(s)}
-                    onSelect={() => pick(s)}
-                  />
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <div className="mt-6 rounded-2xl bg-rose/50 px-6 py-12 text-center">
-              <p className="font-serif text-lg text-charcoal">{t.noResults}</p>
-              <button type="button" onClick={reset} className="mt-4 rounded-md bg-maroon px-5 py-2.5 font-semibold text-white hover:bg-charcoal focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-saffron">
-                {t.clearFilters}
-              </button>
-            </div>
-          )}
+                  {desc && (
+                    <p className="mt-3 line-clamp-3 font-serif text-sm leading-relaxed text-charcoal/75">
+                      {desc}
+                    </p>
+                  )}
+                </div>
+
+                {/* Price and action */}
+                <div className="border-t border-sand bg-[#fffdfa] px-6 py-5">
+                  <div className="mb-4 flex items-end justify-between gap-3">
+                    <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-charcoal/60">
+                      {isCustom ? (isTa ? 'காணிக்கை' : 'Offering') : isTa ? 'சேவை கட்டணம்' : 'Fixed Offering'}
+                    </span>
+                    <span className="text-right text-xl font-bold leading-none text-maroon">
+                      {isCustom ? customLabel : `₹ ${Number(item.amount).toLocaleString('en-IN')}`}
+                    </span>
+                  </div>
+
+                  <Link
+                    href={detailHref}
+                    className="flex w-full items-center justify-center rounded-md bg-saffron px-4 py-3 text-center text-sm font-bold text-charcoal transition-colors hover:bg-maroon hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-maroon"
+                  >
+                    {isTa ? 'முன்பதிவு & காணிக்கை செலுத்த' : 'Book & Pay Seva'}
+                  </Link>
+                </div>
+              </article>
+            );
+          })}
         </div>
-
-        {/* Booking panel */}
-        <div ref={panelRef} className="scroll-mt-24 p-1 lg:sticky lg:top-24 lg:max-h-[calc(100vh-7rem)] lg:w-96 lg:shrink-0 lg:overflow-y-auto">
-          <SankalpamWizard seva={selected} locale={locale} t={t} onChangeSeva={() => setSelected(null)} />
-        </div>
-      </div>
+      )}
     </div>
   );
 }

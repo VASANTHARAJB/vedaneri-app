@@ -11,3 +11,5 @@ apps/api/uploads/*
 services/worker/.venv/
 __pycache__/
 *.pyc
+
+*.bak

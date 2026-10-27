@@ -1,73 +1,165 @@
 'use client';
 
-import { useState } from 'react';
-import type { Locale } from '@/lib/i18n';
-import type { L } from '@/data/sevas';
+import React, { useState, useEffect } from 'react';
 
-const OTHER = '__other__';
-
-export const fieldClass =
-  'w-full rounded-md border border-rose bg-rose/30 px-3 py-2.5 text-charcoal placeholder:text-charcoal/50 focus:border-saffron focus:outline-none focus-visible:ring-2 focus-visible:ring-saffron/40';
-
-type Props = {
-  id: string;
+export interface ChoiceOption {
   label: string;
-  value: string;                 // the saved value: a list item's English name, or the typed text
-  onChange: (value: string) => void;
-  options: L[];
-  locale: Locale;
-  placeholder: string;           // first option, e.g. "Select"
-  otherLabel: string;            // last option, e.g. "Other (type manually)"
-  typeLabel: string;             // label of the text box, e.g. "Type here"
-  error?: string;
-};
+  value: string;
+}
 
-// A list to choose from, with a last option "Other" that opens a text box for typing a value by hand
-export default function ChoiceField({ id, label, value, onChange, options, locale, placeholder, otherLabel, typeLabel, error }: Props) {
-  const known = options.some((o) => o.en === value);
-  const [manual, setManual] = useState(false);
-  const showManual = manual || (value !== '' && !known); // a typed value that was saved earlier opens the text box too
-  const selectValue = showManual ? OTHER : value;
+export interface ChoiceFieldProps {
+  label?: string;
+  id?: string;
+  name?: string;
+  value?: string;
+  onChange?: ((value: string) => void) | React.ChangeEventHandler<HTMLSelectElement | HTMLInputElement>;
+  options?: readonly (string | ChoiceOption)[] | (string | ChoiceOption)[];
+  placeholder?: string;
+  required?: boolean;
+  disabled?: boolean;
+  className?: string;
+  error?: string;
+  hint?: string;
+  allowOther?: boolean;
+}
+
+const SELECT_CLASS =
+  'h-12 w-full rounded-xl border border-[#e8dcc6] bg-white px-3.5 text-sm font-medium text-charcoal focus:border-saffron focus:outline-none focus:ring-2 focus:ring-saffron/30 disabled:bg-sand/20 disabled:cursor-not-allowed';
+
+const INPUT_CLASS =
+  'mt-2 h-11 w-full rounded-xl border border-saffron bg-[#fffdfa] px-3.5 text-sm font-semibold text-maroon placeholder:text-charcoal/40 focus:border-maroon focus:outline-none focus:ring-2 focus:ring-maroon/20';
+
+export default function ChoiceField({
+  label,
+  id,
+  name,
+  value = '',
+  onChange,
+  options = [],
+  placeholder = '-- Select --',
+  required = false,
+  disabled = false,
+  className = '',
+  error,
+  hint,
+  allowOther = true,
+}: ChoiceFieldProps) {
+  // Normalize options to { label, value }
+  const normalizedOptions: ChoiceOption[] = options.map((opt) => {
+    if (typeof opt === 'string') {
+      return { label: opt, value: opt };
+    }
+    return opt;
+  });
+
+  // Check if option list already has an "Other" option
+  const hasOtherInOptions = normalizedOptions.some(
+    (o) => o.value.toLowerCase() === 'other' || o.label.toLowerCase().includes('other')
+  );
+
+  if (allowOther && !hasOtherInOptions) {
+    normalizedOptions.push({ label: 'Other (மற்றவை)', value: 'Other' });
+  }
+
+  // Determine if current value is in predefined list
+  const isPreset = normalizedOptions.some((o) => o.value === value);
+  const isOtherSelected = value === 'Other' || (!isPreset && Boolean(value));
+
+  const [selectedPreset, setSelectedPreset] = useState<string>(() => {
+    if (isPreset) return value;
+    if (value) return 'Other';
+    return '';
+  });
+
+  const [customText, setCustomText] = useState<string>(() => {
+    if (!isPreset && value) return value;
+    return '';
+  });
+
+  useEffect(() => {
+    if (isPreset) {
+      setSelectedPreset(value);
+      setCustomText('');
+    } else if (value) {
+      setSelectedPreset('Other');
+      setCustomText(value);
+    } else {
+      setSelectedPreset('');
+      setCustomText('');
+    }
+  }, [value, isPreset]);
+
+  // Dual-compatible change emitter: works with (val: string) => void OR (e: ChangeEvent) => void
+  const emitChange = (newVal: string) => {
+    if (!onChange) return;
+
+    // Create a String object with target properties to satisfy event consumers (e.target.value)
+    const hybridValue: any = new String(newVal);
+    hybridValue.target = { value: newVal, name: name || id };
+    hybridValue.currentTarget = { value: newVal, name: name || id };
+
+    (onChange as any)(hybridValue);
+  };
+
+  const handleSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const val = e.target.value;
+    setSelectedPreset(val);
+
+    if (val === 'Other') {
+      emitChange(customText || 'Other');
+    } else {
+      setCustomText('');
+      emitChange(val);
+    }
+  };
+
+  const handleCustomInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setCustomText(val);
+    emitChange(val);
+  };
+
+  const inputId = id || name || (label ? label.toLowerCase().replace(/\s+/g, '-') : undefined);
 
   return (
-    <div>
-      <label htmlFor={id} className="block text-sm font-bold text-charcoal">{label}</label>
+    <div className={`space-y-1 ${className}`}>
+      {label && (
+        <label htmlFor={inputId} className="block text-xs font-bold uppercase tracking-wider text-charcoal">
+          {label} {required && <span className="text-rose-600">*</span>}
+        </label>
+      )}
+
       <select
-        id={id}
-        value={selectValue}
-        onChange={(e) => {
-          if (e.target.value === OTHER) {
-            setManual(true);
-            onChange('');
-          } else {
-            setManual(false);
-            onChange(e.target.value);
-          }
-        }}
-        aria-invalid={!!error}
-        aria-describedby={error ? `${id}-error` : undefined}
-        className={`${fieldClass} mt-1`}
+        id={inputId}
+        name={name}
+        value={selectedPreset}
+        onChange={handleSelect}
+        required={required && !isOtherSelected}
+        disabled={disabled}
+        className={SELECT_CLASS}
       >
         <option value="">{placeholder}</option>
-        {options.map((o) => (
-          <option key={o.en} value={o.en}>{o[locale]}</option>
+        {normalizedOptions.map((opt, i) => (
+          <option key={`${opt.value}-${i}`} value={opt.value}>
+            {opt.label}
+          </option>
         ))}
-        <option value={OTHER}>{otherLabel}</option>
       </select>
 
-      {showManual && (
+      {/* Manual Entry field when 'Other' is active */}
+      {allowOther && selectedPreset === 'Other' && (
         <input
-          id={`${id}-other`}
           type="text"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={typeLabel}
-          aria-label={`${label}: ${typeLabel}`}
-          autoComplete="off"
-          className={`${fieldClass} mt-2`}
+          value={customText}
+          onChange={handleCustomInput}
+          required={required}
+          placeholder="Type custom entry (கையேடு உள்ளீடு)..."
+          className={INPUT_CLASS}
         />
       )}
-      {error && <p id={`${id}-error`} role="alert" className="mt-1 text-sm font-semibold text-maroon">{error}</p>}
+
+      {hint && !error && <p className="text-[11px] text-charcoal/60">{hint}</p>}
+      {error && <p className="text-[11px] font-semibold text-rose-600">{error}</p>}
     </div>
   );
 }

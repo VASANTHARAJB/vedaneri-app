@@ -7,6 +7,44 @@ import { isLocale } from '@/lib/i18n';
 
 type Params = { params: Promise<{ locale: string }> };
 
+export interface Offering {
+  id: string | number;
+  slug: string;
+  title_en: string;
+  title_ta: string;
+  description_en: string;
+  description_ta: string;
+  amount: number;
+  price_type: 'fixed' | 'custom';
+  category: 'seva' | 'corpus';
+  status: 'published' | 'draft';
+  image_url?: string;
+}
+
+// Fetch live published items from MariaDB API
+async function getLiveOfferings(): Promise<Offering[]> {
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
+  try {
+    const res = await fetch(`${apiUrl}/offerings`, {
+      cache: 'no-store', // Always fetch fresh database records without stale caching
+    });
+
+    if (!res.ok) {
+      console.error(`Failed to fetch offerings from database. Status: ${res.status}`);
+      return [];
+    }
+
+    const data = await res.json();
+    const allItems: Offering[] = data.sevas || [];
+
+    // Filter only published live offerings
+    return allItems.filter((item) => item.status === 'published');
+  } catch (err) {
+    console.error('Error connecting to database API for offerings:', err);
+    return [];
+  }
+}
+
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { locale } = await params;
   if (!isLocale(locale)) return {};
@@ -17,12 +55,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   };
 }
 
-// Hero photo: apps/web/public/images/hero-bg.jpg
-// On desktop the photo fills the right two thirds of the banner, so Swamiji stays on the right and the text sits on the dark left side.
-// BG_POSITION decides which part of the photo is visible: first number = left/right (0% left edge, 100% right edge),
-// second number = up/down (0% top, 100% bottom). Raise the second number to show more of the lower part (Swamiji).
 const BG_POSITION = '50% 70%';
-// On phones the photo fills the whole banner; this keeps Swamiji in the middle.
 const BG_POSITION_MOBILE = '46% 65%';
 
 function Flame({ className = '' }: { className?: string }) {
@@ -48,15 +81,16 @@ export default async function SevasPage({ params }: Params) {
   const t = dict.sevas;
   const href = (p: string) => `/${locale}${p}`;
 
+  // Direct Database Fetch
+  const liveOfferings = await getLiveOfferings();
+
   return (
     <main>
-      {/* 1. Hero: the hero-bg.jpg photo as the background, with the title and buttons on the dark left side */}
+      {/* 1. Hero: the hero-bg.jpg photo as the background */}
       <section aria-labelledby="sevas-title" className="relative isolate overflow-hidden bg-charcoal text-white">
-        {/* Photo: whole banner on phones, right two thirds on desktop (the left side stays plain dark for the text) */}
         <div aria-hidden="true" className="absolute inset-0 -z-20 bg-cover bg-no-repeat lg:hidden" style={{ backgroundImage: "url('/images/hero-bg.jpg')", backgroundPosition: BG_POSITION_MOBILE }} />
         <div aria-hidden="true" className="absolute inset-y-0 left-1/3 right-0 -z-20 hidden bg-cover bg-no-repeat lg:block" style={{ backgroundImage: "url('/images/hero-bg.jpg')", backgroundPosition: BG_POSITION }} />
 
-        {/* Readability layers. Phones: the whole photo is darkened. Desktop: the photo fades into the dark left side. */}
         <div aria-hidden="true" className="absolute inset-0 -z-10 bg-charcoal/65 lg:hidden" />
         <div aria-hidden="true" className="absolute inset-0 -z-10 hidden bg-gradient-to-r from-charcoal from-33% via-charcoal/60 via-50% to-charcoal/0 to-75% lg:block" />
         <div aria-hidden="true" className="absolute inset-0 -z-10 bg-gradient-to-t from-charcoal/50 via-transparent to-charcoal/30" />
@@ -75,13 +109,17 @@ export default async function SevasPage({ params }: Params) {
               <Flame className="text-saffron" />
               <span>{t.eyebrow}</span>
             </p>
-            <h1 id="sevas-title" className="animate-fade-up mt-5 font-display text-5xl font-semibold leading-[1.1] !text-white drop-shadow-[0_2px_14px_rgba(0,0,0,0.6)] motion-reduce:animate-none sm:text-6xl lg:text-7xl [html[lang='ta']_&]:!leading-[1.3] [html[lang='ta']_&]:text-4xl [html[lang='ta']_&]:sm:text-5xl [html[lang='ta']_&]:lg:text-6xl">{t.title}</h1>
+            <h1 id="sevas-title" className="animate-fade-up mt-5 font-display text-5xl font-semibold leading-[1.1] !text-white drop-shadow-[0_2px_14px_rgba(0,0,0,0.6)] motion-reduce:animate-none sm:text-6xl lg:text-7xl [html[lang='ta']_&]:!leading-[1.3] [html[lang='ta']_&]:text-4xl [html[lang='ta']_&]:sm:text-5xl [html[lang='ta']_&]:lg:text-6xl">
+              {t.title}
+            </h1>
             <div aria-hidden="true" className="mt-4 flex items-center justify-center gap-3 lg:justify-start">
               <span className="h-px w-14 bg-saffron" />
               <span className="h-2 w-2 rotate-45 bg-saffron" />
               <span className="h-px w-14 bg-saffron" />
             </div>
-            <p className="mt-5 font-serif text-lg leading-relaxed text-white/95 drop-shadow-[0_1px_8px_rgba(0,0,0,0.6)] sm:text-xl">{t.intro}</p>
+            <p className="mt-5 font-serif text-lg leading-relaxed text-white/95 drop-shadow-[0_1px_8px_rgba(0,0,0,0.6)] sm:text-xl">
+              {t.intro}
+            </p>
 
             <div className="mt-8 flex flex-wrap justify-center gap-3 lg:justify-start">
               <a href="#seva-list" className="group inline-flex items-center gap-2 rounded-full bg-saffron px-6 py-2.5 font-semibold text-charcoal transition-colors hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
@@ -95,16 +133,15 @@ export default async function SevasPage({ params }: Params) {
           </div>
         </div>
 
-        {/* Soft wave into the white section below */}
         <svg aria-hidden="true" viewBox="0 0 1440 40" preserveAspectRatio="none" className="absolute inset-x-0 bottom-0 h-8 w-full text-white sm:h-10">
           <path d="M0 40V18C240 -2 480 -2 720 14S1200 34 1440 12V40Z" fill="currentColor" />
         </svg>
       </section>
 
-      {/* 2. Seva list: tabs, cards and the booking panel */}
-      <section aria-label={t.listLabel} className="bg-white pb-16 pt-6 sm:pb-20">
+      {/* 2. Seva list: Live Database Offerings */}
+      <section id="seva-list" aria-label={t.listLabel} className="bg-white pb-16 pt-6 sm:pb-20 scroll-mt-10">
         <div className="mx-auto max-w-7xl px-4 lg:px-8">
-          <SevaList t={t} locale={locale} />
+          <SevaList t={t} locale={locale} initialOfferings={liveOfferings} />
         </div>
       </section>
 

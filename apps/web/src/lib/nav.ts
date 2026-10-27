@@ -1,6 +1,16 @@
-// Main menu. Change the order or add items here; labels come from the dictionaries (en.json / ta.json).
-// href '' means the language home page (/en or /ta).
-export const NAV = [
+export interface NavLeaf {
+  key: string;
+  href: string;
+}
+
+export interface NavParent {
+  key: string;
+  children: NavLeaf[];
+}
+
+export type NavItem = NavLeaf | NavParent;
+
+export const NAV: NavItem[] = [
   { key: 'home', href: '' },
   {
     key: 'about',
@@ -20,7 +30,20 @@ export const NAV = [
     ],
   },
   { key: 'seva', href: '/sevas' },
-  { key: 'donations', href: '/donate' },
+  {
+  key: 'donations',
+  children: [
+    { key: 'annadhanamCorpus', href: '/donate/annadhanam-corpus' },
+    { key: 'ashramDonation', href: '/donate/ashram-donation' },
+  ],
+},
   { key: 'magazine', href: '/magazine' },
   { key: 'camps', href: '/camps' },
-] as const;
+  {
+    key: 'contact',
+    children: [
+      { key: 'contactUs', href: '/contact' },
+      { key: 'accommodation', href: '/contact#accommodation' },
+    ],
+  },
+];

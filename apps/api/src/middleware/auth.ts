@@ -1,36 +1,32 @@
-import type { NextFunction, Request, Response } from 'express';
+import { Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { config } from '../config';
-import { HttpError } from '../lib/httpError';
+import { AuthenticatedRequest, AuthUser } from '../types';
 
-export type Role = 'super_admin' | 'editor' | 'accounts' | 'seva_manager';
-export interface AuthUser { id: number; role: Role; type: 'admin' | 'devotee' }
+export function authenticate(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ message: 'Authentication required. No token provided.' });
+  }
 
-declare global {
-  // eslint-disable-next-line @typescript-eslint/no-namespace
-  namespace Express { interface Request { user?: AuthUser } }
+  const token = authHeader.split(' ')[1];
+  try {
+    const decoded = jwt.verify(token, config.jwtSecret) as AuthUser;
+    req.user = decoded;
+    next();
+  } catch {
+    return res.status(401).json({ message: 'Session expired or invalid token.' });
+  }
 }
 
-// Web clients send an httpOnly cookie; Flutter apps send a Bearer token.
-function readToken(req: Request): string | undefined {
-  const h = req.headers.authorization;
-  if (h?.startsWith('Bearer ')) return h.slice(7);
-  return req.cookies?.access_token;
-}
-
-export function requireAuth(...roles: Role[]) {
-  return (req: Request, _res: Response, next: NextFunction) => {
-    const token = readToken(req);
-    if (!token) return next(new HttpError(401, 'unauthenticated', 'Login required'));
-    try {
-      const p = jwt.verify(token, config.jwt.accessSecret) as unknown as AuthUser;
-      if (roles.length && !(p.role === 'super_admin' || roles.includes(p.role))) {
-        return next(new HttpError(403, 'forbidden', 'You do not have access to this'));
-      }
-      req.user = { id: p.id, role: p.role, type: p.type };
-      next();
-    } catch {
-      next(new HttpError(401, 'invalid_token', 'Session expired, please login again'));
+export function requireRole(allowedRoles: string[]) {
+  return (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    if (!req.user) {
+      return res.status(401).json({ message: 'Unauthorized' });
     }
+    if (!allowedRoles.includes(req.user.role)) {
+      return res.status(403).json({ message: 'Access denied: insufficient privileges.' });
+    }
+    next();
   };
 }

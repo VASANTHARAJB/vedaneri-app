@@ -5,6 +5,7 @@
 
 import type { FamilyMember } from '@/data/sankalpam';
 import { streamOf, type Stream } from '@/lib/cartItem';
+import { getSession } from '@/lib/authDemo';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
 export type Shipping = { phone: string; address: string; district: string; pin: string; renew: boolean };
@@ -27,11 +28,12 @@ export type CartLine = {
 export type Contact = { name: string; phone: string; email: string; address: string; city: string; state: string; pin: string; country: string };
 export const EMPTY_CONTACT: Contact = { name: '', phone: '', email: '', address: '', city: '', state: '', pin: '', country: 'India' };
 
-export type Order = { id: string; stream: Stream; placedAt: string; lines: CartLine[]; total: number; contact: Contact; method: string };
+export type Order = { id: string; stream: Stream; placedAt: string; lines: CartLine[]; total: number; contact: Contact; method: string; accountId?: string };
 
 const KEY_CART = 'vedaneri.cart.v1';
 const KEY_CONTACT = 'vedaneri.contact.v1';
 const KEY_ORDER = 'vedaneri.order.v1';
+const KEY_ORDERS = 'vedaneri.orders.v1';   // every order placed in this browser (the profile page reads it)
 
 // Browser storage can be blocked or empty (private windows), so every call is wrapped.
 function read<T>(key: string, fallback: T): T {
@@ -128,7 +130,9 @@ export default function CartProvider({ children }: { children: ReactNode }) {
         total: mine.reduce((s, l) => s + l.unit * l.qty, 0),
         contact,
         method,
+        accountId: getSession()?.id,
       };
+      write(KEY_ORDERS, [...read<Order[]>(KEY_ORDERS, []), o]);
       setOrder(o);
       setLines((all) => all.filter((l) => streamOf(l) !== stream));
       return o;

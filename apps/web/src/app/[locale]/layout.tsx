@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { notFound } from 'next/navigation';
 import { isLocale, locales } from '@/lib/i18n';
 import { getDictionary } from '@/lib/dictionary';
+import ChromeGate from '@/components/ChromeGate';
 import Footer from '@/components/Footer';
 import Header from '@/components/Header';
 import CartProvider from '@/components/cart/CartProvider';
@@ -29,13 +30,25 @@ export default async function RootLayout({
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
   const t = getDictionary(locale);
+
   return (
-    <html lang={locale}>
+    <html lang={locale} data-scroll-behavior="smooth" className="scroll-smooth">
       <body>
         <CartProvider>
-          <Header locale={locale} siteName={t.site.name} tagline={t.site.tagline} labels={t.nav} a11y={t.a11y} cartLabel={t.shop.cartLabel} />
+          <ChromeGate>
+            <Header
+              locale={locale}
+              siteName={t.site.name}
+              tagline={t.site.tagline}
+              labels={t.nav}
+              a11y={t.a11y}
+              cartLabel={t.shop.cartLabel}
+            />
+          </ChromeGate>
           {children}
-          <Footer locale={locale} t={t.footer} />
+          <ChromeGate>
+            <Footer locale={locale} t={t.footer} />
+          </ChromeGate>
         </CartProvider>
       </body>
     </html>

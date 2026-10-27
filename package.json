@@ -17,9 +17,11 @@
     "db:up": "docker compose -f infra/docker-compose.yml --env-file .env up -d mysql",
     "db:down": "docker compose -f infra/docker-compose.yml --env-file .env down",
     "db:migrate": "npm run db:migrate -w @vedaneri/api",
-    "db:seed": "npm run db:seed -w @vedaneri/api"
+    "db:seed": "npm run db:seed -w @vedaneri/api",
+    "db:seed:content": "npm run db:seed:content -w @vedaneri/api"
   },
   "devDependencies": {
-    "concurrently": "^10.0.6"
+    "concurrently": "^10.0.6",
+    "eslint-config-next": "^16.4.3"
   }
 }

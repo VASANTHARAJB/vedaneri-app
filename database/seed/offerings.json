@@ -1,0 +1,868 @@
+[
+ {
+  "stream": "seva",
+  "kind": "festival",
+  "slug": "kasi-viswanathar-annabishekam",
+  "name": {
+   "en": "Sri Kasi Viswanathar Annabishekam",
+   "ta": "ஸ்ரீ காசி விஸ்வநாதர் அன்னாபிஷேகம்"
+  },
+  "when": {
+   "en": "25 Oct 2026",
+   "ta": "25 அக் 2026"
+  },
+  "note": {
+   "en": "",
+   "ta": ""
+  },
+  "benefit": {
+   "en": "",
+   "ta": ""
+  },
+  "amount": 0,
+  "minAmount": 1,
+  "maxQty": 10,
+  "from": "2026-10-25",
+  "to": "2026-10-25",
+  "weekday": null,
+  "status": "open",
+  "description": {
+   "en": [],
+   "ta": []
+  },
+  "includes": [],
+  "sort": 10
+ },
+ {
+  "stream": "seva",
+  "kind": "festival",
+  "slug": "skanda-shashti-puja",
+  "name": {
+   "en": "Sri Skanda Shashti Puja",
+   "ta": "ஸ்ரீ ஸ்கந்த சஷ்டி பூஜை"
+  },
+  "when": {
+   "en": "15 Nov 2026",
+   "ta": "15 நவ 2026"
+  },
+  "note": {
+   "en": "",
+   "ta": ""
+  },
+  "benefit": {
+   "en": "",
+   "ta": ""
+  },
+  "amount": 0,
+  "minAmount": 1,
+  "maxQty": 10,
+  "from": "2026-11-15",
+  "to": "2026-11-15",
+  "weekday": null,
+  "status": "open",
+  "description": {
+   "en": [],
+   "ta": []
+  },
+  "includes": [],
+  "sort": 20
+ },
+ {
+  "stream": "seva",
+  "kind": "festival",
+  "slug": "navaratri-one-day-puja-kanikai",
+  "name": {
+   "en": "Sri Saradha Navaratri One Day Puja Kanikai",
+   "ta": "ஸ்ரீ சாரதா நவராத்திரி ஒரு நாள் பூஜை காணிக்கை"
+  },
+  "when": {
+   "en": "11 – 21 Oct 2026",
+   "ta": "11 – 21 அக் 2026"
+  },
+  "note": {
+   "en": "",
+   "ta": ""
+  },
+  "benefit": {
+   "en": "",
+   "ta": ""
+  },
+  "amount": 10001,
+  "minAmount": 1,
+  "maxQty": 10,
+  "from": "2026-10-11",
+  "to": "2026-10-21",
+  "weekday": null,
+  "status": "open",
+  "description": {
+   "en": [],
+   "ta": []
+  },
+  "includes": [],
+  "sort": 30
+ },
+ {
+  "stream": "seva",
+  "kind": "festival",
+  "slug": "navaratri-sumangali-puja",
+  "name": {
+   "en": "Sri Saradha Navaratri Sumangali Puja",
+   "ta": "ஸ்ரீ சாரதா நவராத்திரி சுமங்கலி பூஜை"
+  },
+  "when": {
+   "en": "11 – 21 Oct 2026",
+   "ta": "11 – 21 அக் 2026"
+  },
+  "note": {
+   "en": "",
+   "ta": ""
+  },
+  "benefit": {
+   "en": "",
+   "ta": ""
+  },
+  "amount": 2500,
+  "minAmount": 1,
+  "maxQty": 10,
+  "from": "2026-10-11",
+  "to": "2026-10-21",
+  "weekday": null,
+  "status": "open",
+  "description": {
+   "en": [],
+   "ta": []
+  },
+  "includes": [],
+  "sort": 40
+ },
+ {
+  "stream": "seva",
+  "kind": "festival",
+  "slug": "navaratri-sankalpam",
+  "name": {
+   "en": "Sri Saradha Navaratri Sankalpam",
+   "ta": "ஸ்ரீ சாரதா நவராத்திரி சங்கல்பம்"
+  },
+  "when": {
+   "en": "11 – 21 Oct 2026",
+   "ta": "11 – 21 அக் 2026"
+  },
+  "note": {
+   "en": "",
+   "ta": ""
+  },
+  "benefit": {
+   "en": "",
+   "ta": ""
+  },
+  "amount": 501,
+  "minAmount": 1,
+  "maxQty": 10,
+  "from": "2026-10-11",
+  "to": "2026-10-21",
+  "weekday": null,
+  "status": "open",
+  "description": {
+   "en": [],
+   "ta": []
+  },
+  "includes": [],
+  "sort": 50
+ },
+ {
+  "stream": "seva",
+  "kind": "festival",
+  "slug": "navaratri-2026",
+  "name": {
+   "en": "Sri Saradha Navaratri 2026",
+   "ta": "ஸ்ரீ சாரதா நவராத்திரி 2026"
+  },
+  "when": {
+   "en": "11 – 21 Oct 2026",
+   "ta": "11 – 21 அக் 2026"
+  },
+  "note": {
+   "en": "",
+   "ta": ""
+  },
+  "benefit": {
+   "en": "",
+   "ta": ""
+  },
+  "amount": 0,
+  "minAmount": 1,
+  "maxQty": 10,
+  "from": "2026-10-11",
+  "to": "2026-10-21",
+  "weekday": null,
+  "status": "open",
+  "description": {
+   "en": [],
+   "ta": []
+  },
+  "includes": [
+   {
+    "label": {
+     "en": "Homa materials",
+     "ta": "ஹோம பொருட்கள்"
+    },
+    "price": 20000
+   },
+   {
+    "label": {
+     "en": "Ghee, 20 kg",
+     "ta": "நெய், 20 கிலோ"
+    },
+    "price": 15000
+   },
+   {
+    "label": {
+     "en": "Thirumangalyam (2 gram gold)",
+     "ta": "திருமாங்கல்யம் (2 கிராம் தங்கம்)"
+    },
+    "price": 35000
+   },
+   {
+    "label": {
+     "en": "Flowers and garlands",
+     "ta": "பூக்களும் மாலைகளும்"
+    },
+    "price": 15000
+   },
+   {
+    "label": {
+     "en": "Vastra samarpanam for Sri Mangala Chandi Homam",
+     "ta": "ஸ்ரீ மங்கள சண்டி ஹோமத்துக்கு வஸ்திர சமர்ப்பணம்"
+    },
+    "price": 10000
+   },
+   {
+    "label": {
+     "en": "Sivacharyar sambavanai and Saptasati parayana ritvik sambavanai",
+     "ta": "சிவாச்சாரியார் சம்பாவனை மற்றும் சப்தசதி பாராயண ரித்விக் சம்பாவனை"
+    },
+    "price": 90000
+   },
+   {
+    "label": {
+     "en": "Homa Sankalpam",
+     "ta": "ஹோம சங்கல்பம்"
+    },
+    "price": 501
+   }
+  ],
+  "sort": 60
+ },
+ {
+  "stream": "seva",
+  "kind": "regular",
+  "slug": "go-puja",
+  "name": {
+   "en": "Go Puja",
+   "ta": "கோபூஜை"
+  },
+  "when": {
+   "en": "As desired",
+   "ta": "விரும்பிய நாளில்"
+  },
+  "note": {
+   "en": "",
+   "ta": ""
+  },
+  "benefit": {
+   "en": "Brings prosperity, peace and purifies domestic environment.",
+   "ta": "செழிப்பையும் அமைதியையும் தரும்; இல்லச் சூழலைத் தூய்மைப்படுத்தும்."
+  },
+  "amount": 200,
+  "minAmount": 1,
+  "maxQty": 10,
+  "from": null,
+  "to": null,
+  "weekday": null,
+  "status": "open",
+  "description": {
+   "en": [],
+   "ta": []
+  },
+  "includes": [],
+  "sort": 70
+ },
+ {
+  "stream": "seva",
+  "kind": "regular",
+  "slug": "archanai",
+  "name": {
+   "en": "Archanai",
+   "ta": "அர்ச்சனை"
+  },
+  "when": {
+   "en": "As desired",
+   "ta": "விரும்பிய நாளில்"
+  },
+  "note": {
+   "en": "",
+   "ta": ""
+  },
+  "benefit": {
+   "en": "Daily offering in your name with Vedic chantings.",
+   "ta": "வேத மந்திரங்களுடன் உங்கள் பெயரில் தினசரி அர்ப்பணிப்பு."
+  },
+  "amount": 200,
+  "minAmount": 1,
+  "maxQty": 10,
+  "from": null,
+  "to": null,
+  "weekday": null,
+  "status": "open",
+  "description": {
+   "en": [],
+   "ta": []
+  },
+  "includes": [],
+  "sort": 80
+ },
+ {
+  "stream": "seva",
+  "kind": "regular",
+  "slug": "special-puja",
+  "name": {
+   "en": "Special Puja (birthday, wedding day, etc.)",
+   "ta": "சிறப்பு பூஜை (பிறந்தநாள், திருமண நாள் போன்றவை)"
+  },
+  "when": {
+   "en": "As desired",
+   "ta": "விரும்பிய நாளில்"
+  },
+  "note": {
+   "en": "",
+   "ta": ""
+  },
+  "benefit": {
+   "en": "",
+   "ta": ""
+  },
+  "amount": 500,
+  "minAmount": 1,
+  "maxQty": 10,
+  "from": null,
+  "to": null,
+  "weekday": null,
+  "status": "open",
+  "description": {
+   "en": [],
+   "ta": []
+  },
+  "includes": [],
+  "sort": 90
+ },
+ {
+  "stream": "seva",
+  "kind": "regular",
+  "slug": "ganga-puja",
+  "name": {
+   "en": "Sri Ganga Puja (Aarti)",
+   "ta": "ஸ்ரீ கங்கா பூஜை (ஆரத்தி)"
+  },
+  "when": {
+   "en": "Every Friday",
+   "ta": "ஒவ்வொரு வெள்ளிக்கிழமை"
+  },
+  "note": {
+   "en": "",
+   "ta": ""
+  },
+  "benefit": {
+   "en": "Performed on the holy banks of river Pennai.",
+   "ta": "புனிதமான பெண்ணை ஆற்றின் கரையில் நடத்தப்படுகிறது."
+  },
+  "amount": 200,
+  "minAmount": 1,
+  "maxQty": 10,
+  "from": null,
+  "to": null,
+  "weekday": 5,
+  "status": "open",
+  "description": {
+   "en": [],
+   "ta": []
+  },
+  "includes": [],
+  "sort": 100
+ },
+ {
+  "stream": "seva",
+  "kind": "regular",
+  "slug": "pradosa-puja",
+  "name": {
+   "en": "Sri Pradosa Puja",
+   "ta": "ஸ்ரீ பிரதோஷ கால பூஜை"
+  },
+  "when": {
+   "en": "Only on Triyodasi",
+   "ta": "திரயோதசி அன்று மட்டும்"
+  },
+  "note": {
+   "en": "Offered only on Triyodasi. Please choose a Triyodasi date; the ashram will confirm it.",
+   "ta": "திரயோதசி அன்று மட்டும் நடைபெறும். திரயோதசி தேதியைத் தேர்ந்தெடுக்கவும்; ஆசிரமம் உறுதிப்படுத்தும்."
+  },
+  "benefit": {
+   "en": "Special bi-monthly worship of Lord Shiva.",
+   "ta": "சிவபெருமானுக்கான சிறப்பு மாதம் இருமுறை வழிபாடு."
+  },
+  "amount": 200,
+  "minAmount": 1,
+  "maxQty": 10,
+  "from": null,
+  "to": null,
+  "weekday": null,
+  "status": "open",
+  "description": {
+   "en": [],
+   "ta": []
+  },
+  "includes": [],
+  "sort": 110
+ },
+ {
+  "stream": "seva",
+  "kind": "regular",
+  "slug": "special-abhishekam",
+  "name": {
+   "en": "Special Abhishekam and Alankaram",
+   "ta": "சிறப்பு அபிஷேகம் & அலங்காரம்"
+  },
+  "when": {
+   "en": "As desired",
+   "ta": "விரும்பிய நாளில்"
+  },
+  "note": {
+   "en": "",
+   "ta": ""
+  },
+  "benefit": {
+   "en": "Detailed ritual bath to presiding deity.",
+   "ta": "மூலவருக்குச் செய்யப்படும் விரிவான அபிஷேகம்."
+  },
+  "amount": 2000,
+  "minAmount": 1,
+  "maxQty": 10,
+  "from": null,
+  "to": null,
+  "weekday": null,
+  "status": "open",
+  "description": {
+   "en": [],
+   "ta": []
+  },
+  "includes": [],
+  "sort": 120
+ },
+ {
+  "stream": "seva",
+  "kind": "regular",
+  "slug": "udayastamana-puja",
+  "name": {
+   "en": "Udayastamana Puja",
+   "ta": "உதயாஸ்தமன பூஜை"
+  },
+  "when": {
+   "en": "As desired",
+   "ta": "விரும்பிய நாளில்"
+  },
+  "note": {
+   "en": "",
+   "ta": ""
+  },
+  "benefit": {
+   "en": "Worship services from sunrise to sunset.",
+   "ta": "சூரிய உதயம் முதல் அஸ்தமனம் வரையிலான வழிபாட்டுச் சேவைகள்."
+  },
+  "amount": 5000,
+  "minAmount": 1,
+  "maxQty": 10,
+  "from": null,
+  "to": null,
+  "weekday": null,
+  "status": "open",
+  "description": {
+   "en": [],
+   "ta": []
+  },
+  "includes": [],
+  "sort": 130
+ },
+ {
+  "stream": "seva",
+  "kind": "regular",
+  "slug": "parivara-devata-puja",
+  "name": {
+   "en": "Sri Parivara Devata Puja",
+   "ta": "ஸ்ரீ பரிவார தேவதா பூஜை"
+  },
+  "when": {
+   "en": "As desired",
+   "ta": "விரும்பிய நாளில்"
+  },
+  "note": {
+   "en": "",
+   "ta": ""
+  },
+  "benefit": {
+   "en": "",
+   "ta": ""
+  },
+  "amount": 1000,
+  "minAmount": 1,
+  "maxQty": 10,
+  "from": null,
+  "to": null,
+  "weekday": null,
+  "status": "open",
+  "description": {
+   "en": [],
+   "ta": []
+  },
+  "includes": [],
+  "sort": 140
+ },
+ {
+  "stream": "seva",
+  "kind": "annadhanam",
+  "slug": "annadhanam",
+  "name": {
+   "en": "Annadhanam",
+   "ta": "அன்னதானம்"
+  },
+  "when": {
+   "en": "Every Thursday",
+   "ta": "ஒவ்வொரு வியாழக்கிழமை"
+  },
+  "note": {
+   "en": "",
+   "ta": ""
+  },
+  "benefit": {
+   "en": "",
+   "ta": ""
+  },
+  "amount": 9000,
+  "minAmount": 1,
+  "maxQty": 10,
+  "from": null,
+  "to": null,
+  "weekday": 4,
+  "status": "open",
+  "description": {
+   "en": [],
+   "ta": []
+  },
+  "includes": [],
+  "sort": 150
+ },
+ {
+  "stream": "seva",
+  "kind": "corpus",
+  "slug": "adiguru-nitya-puja-corpus",
+  "name": {
+   "en": "Sri Adiguru Nitya Puja Corpus",
+   "ta": "ஸ்ரீ ஆதிகுரு நித்ய பூஜை கார்பஸ்"
+  },
+  "when": {
+   "en": "As desired",
+   "ta": "விரும்பிய நாளில்"
+  },
+  "note": {
+   "en": "",
+   "ta": ""
+  },
+  "benefit": {
+   "en": "",
+   "ta": ""
+  },
+  "amount": 50000,
+  "minAmount": 1,
+  "maxQty": 10,
+  "from": null,
+  "to": null,
+  "weekday": null,
+  "status": "open",
+  "description": {
+   "en": [],
+   "ta": []
+  },
+  "includes": [],
+  "sort": 160
+ },
+ {
+  "stream": "seva",
+  "kind": "corpus",
+  "slug": "corpus-fund-general",
+  "name": {
+   "en": "Corpus Fund",
+   "ta": "கார்பஸ் நிதி"
+  },
+  "when": {
+   "en": "As desired",
+   "ta": "விரும்பிய நாளில்"
+  },
+  "note": {
+   "en": "",
+   "ta": ""
+  },
+  "benefit": {
+   "en": "",
+   "ta": ""
+  },
+  "amount": 0,
+  "minAmount": 1,
+  "maxQty": 10,
+  "from": null,
+  "to": null,
+  "weekday": null,
+  "status": "open",
+  "description": {
+   "en": [],
+   "ta": []
+  },
+  "includes": [],
+  "sort": 170
+ },
+ {
+  "stream": "donation",
+  "kind": "donation",
+  "slug": "gurukanikkai",
+  "name": {
+   "en": "Gurukanikkai",
+   "ta": "குருகாணிக்கை"
+  },
+  "when": {
+   "en": "",
+   "ta": ""
+  },
+  "note": {
+   "en": "",
+   "ta": ""
+  },
+  "benefit": {
+   "en": "",
+   "ta": ""
+  },
+  "amount": 0,
+  "minAmount": 1,
+  "maxQty": 10,
+  "from": null,
+  "to": null,
+  "weekday": null,
+  "status": "open",
+  "description": {
+   "en": [],
+   "ta": []
+  },
+  "includes": [],
+  "sort": 10
+ },
+ {
+  "stream": "donation",
+  "kind": "donation",
+  "slug": "general-donation",
+  "name": {
+   "en": "General Donation",
+   "ta": "பொது நன்கொடை"
+  },
+  "when": {
+   "en": "",
+   "ta": ""
+  },
+  "note": {
+   "en": "",
+   "ta": ""
+  },
+  "benefit": {
+   "en": "",
+   "ta": ""
+  },
+  "amount": 0,
+  "minAmount": 1,
+  "maxQty": 10,
+  "from": null,
+  "to": null,
+  "weekday": null,
+  "status": "open",
+  "description": {
+   "en": [],
+   "ta": []
+  },
+  "includes": [],
+  "sort": 20
+ },
+ {
+  "stream": "donation",
+  "kind": "donation",
+  "slug": "veda-samrakshanam",
+  "name": {
+   "en": "Veda Samrakshanam",
+   "ta": "வேத ஸம்ரக்ஷணம்"
+  },
+  "when": {
+   "en": "",
+   "ta": ""
+  },
+  "note": {
+   "en": "",
+   "ta": ""
+  },
+  "benefit": {
+   "en": "",
+   "ta": ""
+  },
+  "amount": 3000,
+  "minAmount": 1,
+  "maxQty": 10,
+  "from": null,
+  "to": null,
+  "weekday": null,
+  "status": "open",
+  "description": {
+   "en": [],
+   "ta": []
+  },
+  "includes": [],
+  "sort": 30
+ },
+ {
+  "stream": "donation",
+  "kind": "donation",
+  "slug": "go-samrakshanam",
+  "name": {
+   "en": "Go Samrakshanam (One month for a cow)",
+   "ta": "கோ ஸம்ரக்ஷணம் (ஒரு பசுவிற்கு ஒரு மாதம்)"
+  },
+  "when": {
+   "en": "",
+   "ta": ""
+  },
+  "note": {
+   "en": "",
+   "ta": ""
+  },
+  "benefit": {
+   "en": "",
+   "ta": ""
+  },
+  "amount": 3000,
+  "minAmount": 1,
+  "maxQty": 10,
+  "from": null,
+  "to": null,
+  "weekday": null,
+  "status": "open",
+  "description": {
+   "en": [],
+   "ta": []
+  },
+  "includes": [],
+  "sort": 40
+ },
+ {
+  "stream": "donation",
+  "kind": "donation",
+  "slug": "vriksha-samrakshanam",
+  "name": {
+   "en": "Vriksha Samrakshanam",
+   "ta": "விருக்ஷ சம்ரக்ஷணம்"
+  },
+  "when": {
+   "en": "",
+   "ta": ""
+  },
+  "note": {
+   "en": "",
+   "ta": ""
+  },
+  "benefit": {
+   "en": "",
+   "ta": ""
+  },
+  "amount": 2000,
+  "minAmount": 1,
+  "maxQty": 10,
+  "from": null,
+  "to": null,
+  "weekday": null,
+  "status": "open",
+  "description": {
+   "en": [],
+   "ta": []
+  },
+  "includes": [],
+  "sort": 50
+ },
+ {
+  "stream": "donation",
+  "kind": "corpus",
+  "slug": "donation-corpus-fund",
+  "name": {
+   "en": "Corpus Fund",
+   "ta": "கார்பஸ் நிதி"
+  },
+  "when": {
+   "en": "",
+   "ta": ""
+  },
+  "note": {
+   "en": "",
+   "ta": ""
+  },
+  "benefit": {
+   "en": "",
+   "ta": ""
+  },
+  "amount": 0,
+  "minAmount": 1,
+  "maxQty": 10,
+  "from": null,
+  "to": null,
+  "weekday": null,
+  "status": "open",
+  "description": {
+   "en": [],
+   "ta": []
+  },
+  "includes": [],
+  "sort": 60
+ },
+ {
+  "stream": "donation",
+  "kind": "corpus",
+  "slug": "annadhanam-corpus-fund",
+  "name": {
+   "en": "Annadhanam Corpus Fund",
+   "ta": "அன்னதான கார்பஸ் நிதி"
+  },
+  "when": {
+   "en": "",
+   "ta": ""
+  },
+  "note": {
+   "en": "",
+   "ta": ""
+  },
+  "benefit": {
+   "en": "",
+   "ta": ""
+  },
+  "amount": 0,
+  "minAmount": 1,
+  "maxQty": 10,
+  "from": null,
+  "to": null,
+  "weekday": null,
+  "status": "open",
+  "description": {
+   "en": [],
+   "ta": []
+  },
+  "includes": [],
+  "sort": 70
+ }
+]

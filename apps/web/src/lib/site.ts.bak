@@ -1,7 +1,0 @@
-// Contact details used in the footer. Fill these in; an empty value is simply not shown.
-export const SITE = {
-  phones: [] as string[],               // e.g. ['+91 98765 43210', '+91 98765 43211']
-  email: '',                            // e.g. 'info@vedaneri.org'
-  youtube: '',                          // full URL of the YouTube channel
-  whatsapp: '',                         // full URL, e.g. 'https://wa.me/919876543210'
-};
