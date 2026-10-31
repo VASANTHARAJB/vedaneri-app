@@ -1,14 +1,27 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dictionary } from '@/lib/dictionary';
 import type { Locale } from '@/lib/i18n';
 import { formatDate } from '@/lib/format';
-import { txt } from '@/data/sevas';
-import { SERIES, VIDEOS, YOUTUBE_URL, clock, seriesName, type SeriesKey, type VideoItem } from '@/data/media';
+import { YOUTUBE_URL } from '@/data/media';
 
 type T = Dictionary['video'];
 const PAGE = 6;
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
+
+type Cat = { id: string; name_en: string; name_ta: string | null };
+type Row = {
+  id: string; kind: 'single' | 'series'; category_id: string | null; category_en: string | null; category_ta: string | null;
+  title_en: string; title_ta: string | null; youtube_id: string | null; first_youtube_id: string | null; item_date: string | null; class_count?: number;
+};
+type Cls = { id: string; title_en: string; title_ta: string | null; youtube_id: string; class_date: string | null; sort_order: number };
+type Video = {
+  id: string; kind: 'single' | 'series'; cat: string | null; catName: { en: string; ta: string } | null;
+  title: { en: string; ta: string }; thumb: string; date: string; youtubeId: string | null; classCount: number;
+};
+
+const thumbOf = (id?: string | null) => (id ? `https://img.youtube.com/vi/${id}/hqdefault.jpg` : '');
 
 function PlayBadge({ big = false }: { big?: boolean }) {
   return (
@@ -18,21 +31,56 @@ function PlayBadge({ big = false }: { big?: boolean }) {
   );
 }
 
-// Video lectures: a featured lecture, series chips and search, a grid of lectures, and a pop-up player.
+// Video lectures: a featured lecture, category chips and search, a grid of lectures, and a pop-up player.
 export default function VideoLibrary({ t, locale }: { t: T; locale: Locale }) {
-  const [series, setSeries] = useState<'all' | SeriesKey>('all');
+  const [cats, setCats] = useState<Cat[]>([]);
+  const [videos, setVideos] = useState<Video[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [series, setSeries] = useState<'all' | string>('all');
   const [query, setQuery] = useState('');
   const [limit, setLimit] = useState(PAGE);
-  const [open, setOpen] = useState<VideoItem | null>(null);
+  const [open, setOpen] = useState<Video | null>(null);
+  const [classes, setClasses] = useState<Cls[]>([]);
+  const [clsLoading, setClsLoading] = useState(false);
+  const [playId, setPlayId] = useState<string | null>(null); // the YouTube id being played
   const dialogRef = useRef<HTMLDialogElement>(null);
   const opener = useRef<HTMLElement | null>(null);
 
-  const featured = VIDEOS.find((v) => v.featured) ?? VIDEOS[0];
+  const load = useCallback(async () => {
+    setLoading(true); setError(false);
+    try {
+      const [a, b] = await Promise.all([
+        fetch(`${API_BASE}/discover/categories?kind=video`, { cache: 'no-store' }),
+        fetch(`${API_BASE}/discover/video`, { cache: 'no-store' }),
+      ]);
+      if (!b.ok) throw new Error();
+      const rows: Row[] = (await b.json()).items || [];
+      setCats(a.ok ? (await a.json()).categories || [] : []);
+      const list: Video[] = [];
+      rows.forEach((r) => {
+        const yid = r.kind === 'series' ? r.first_youtube_id : r.youtube_id;
+        if (!yid) return; // a series with no classes yet, or a broken link
+        list.push({
+          id: r.id, kind: r.kind, cat: r.category_id, catName: r.category_en ? { en: r.category_en, ta: r.category_ta || r.category_en } : null,
+          title: { en: r.title_en, ta: r.title_ta || r.title_en }, thumb: thumbOf(yid), date: r.item_date || '',
+          youtubeId: r.kind === 'single' ? r.youtube_id : null, classCount: r.class_count || 0,
+        });
+      });
+      setVideos(list);
+    } catch { setError(true); } finally { setLoading(false); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const txt2 = (x: { en: string; ta: string }) => x[locale];
+  const featured = videos[0] ?? null;
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return VIDEOS.filter((v) => (series === 'all' || v.series === series) && (!q || txt(v.title, locale).toLowerCase().includes(q))).sort((a, b) => b.date.localeCompare(a.date));
-  }, [series, query, locale]);
+    return videos
+      .filter((v) => (series === 'all' || v.cat === series) && (!q || `${v.title.en} ${v.title.ta}`.toLowerCase().includes(q)))
+      .sort((a, b) => b.date.localeCompare(a.date));
+  }, [videos, series, query]);
 
   useEffect(() => setLimit(PAGE), [series, query]);
 
@@ -44,31 +92,57 @@ export default function VideoLibrary({ t, locale }: { t: T; locale: Locale }) {
     if (!open && d.open) d.close();
   }, [open]);
 
-  function show(v: VideoItem, e: React.MouseEvent<HTMLElement>) {
+  async function show(v: Video, e: React.MouseEvent<HTMLElement>) {
     opener.current = e.currentTarget;
-    setOpen(v);
+    setOpen(v); setClasses([]); setPlayId(v.youtubeId);
+    if (v.kind === 'series') {
+      setClsLoading(true);
+      try {
+        const r = await fetch(`${API_BASE}/discover/video/${v.id}/classes`, { cache: 'no-store' });
+        const list: Cls[] = r.ok ? (await r.json()).classes || [] : [];
+        setClasses(list);
+        setPlayId(list[0]?.youtube_id || null);
+      } catch { setClasses([]); } finally { setClsLoading(false); }
+    }
   }
   function close() {
     setOpen(null);
     opener.current?.focus();
   }
 
-  const chips = [{ key: 'all' as const, label: t.all }, ...SERIES.map((s) => ({ key: s.key, label: s.name[locale] }))];
+  const chips = [{ key: 'all', label: t.all }, ...cats.map((c) => ({ key: c.id, label: locale === 'ta' ? c.name_ta || c.name_en : c.name_en }))];
+  const playing = classes.find((c) => c.youtube_id === playId) || null;
+
+  if (loading) {
+    return <div className="space-y-6"><div className="aspect-[21/9] animate-pulse rounded-2xl bg-sand/50" /><div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">{[0, 1, 2].map((i) => <div key={i} className="aspect-video animate-pulse rounded-xl bg-sand/50" />)}</div></div>;
+  }
+  if (error) {
+    return (
+      <div role="alert" className="rounded-lg border border-red-200 border-l-4 border-l-red-600 bg-red-50 p-6 text-red-800">
+        <p className="font-semibold">{locale === 'ta' ? 'காணொளிகளை இப்போது ஏற்ற இயலவில்லை.' : 'The videos could not be loaded right now.'}</p>
+        <button type="button" onClick={load} className="mt-3 rounded-md border-2 border-red-700 px-4 py-2 text-sm font-bold text-red-800 hover:bg-red-700 hover:text-white">{locale === 'ta' ? 'மீண்டும் முயற்சி' : 'Try again'}</button>
+      </div>
+    );
+  }
+  if (!featured) {
+    return <div className="rounded-lg border border-dashed border-sand bg-cream/40 py-20 text-center font-serif text-lg text-charcoal/75">{locale === 'ta' ? 'காணொளிகள் விரைவில் சேர்க்கப்படும்.' : 'Videos will be added soon.'}</div>;
+  }
 
   return (
     <div>
       {/* Featured */}
       <section aria-labelledby="featured-title">
         <h2 id="featured-title" className="font-display text-3xl font-semibold text-maroon sm:text-4xl [html[lang='ta']_&]:!leading-[1.3] [html[lang='ta']_&]:text-2xl [html[lang='ta']_&]:sm:text-3xl">{t.featuredTitle}</h2>
-        <button type="button" onClick={(e) => show(featured, e)} aria-label={`${t.watch}: ${txt(featured.title, locale)}`} className="group relative mt-5 block w-full overflow-hidden rounded-2xl bg-charcoal text-left shadow-xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-saffron">
+        <button type="button" onClick={(e) => show(featured, e)} aria-label={`${t.watch}: ${txt2(featured.title)}`} className="group relative mt-5 block w-full overflow-hidden rounded-2xl bg-charcoal text-left shadow-xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-saffron">
           <div className="aspect-[16/9] w-full bg-cover bg-center transition-transform duration-700 group-hover:scale-105 sm:aspect-[21/9]" style={{ backgroundImage: `url('${featured.thumb}'), linear-gradient(135deg, #7A1C1C, #231A18)` }} />
           <div aria-hidden="true" className="absolute inset-0 bg-gradient-to-t from-charcoal via-charcoal/40 to-transparent" />
           <div className="absolute inset-0 flex items-center justify-center"><PlayBadge big /></div>
           <div className="absolute inset-x-0 bottom-0 p-5 sm:p-8">
-            <span className="rounded-full bg-saffron px-3 py-1 text-xs font-bold text-charcoal">{seriesName(featured.series, locale)}</span>
-            <p className="mt-3 max-w-3xl font-display text-2xl font-semibold leading-tight text-white sm:text-4xl [html[lang='ta']_&]:!leading-[1.35] [html[lang='ta']_&]:text-xl [html[lang='ta']_&]:sm:text-3xl">{txt(featured.title, locale)}</p>
-            <p className="mt-2 hidden max-w-2xl text-white/85 sm:block">{txt(featured.desc, locale)}</p>
-            <p className="mt-2 text-sm font-semibold text-white/80">{clock(featured.duration)} · {formatDate(featured.date, locale)}</p>
+            {featured.catName && <span className="rounded-full bg-saffron px-3 py-1 text-xs font-bold text-charcoal">{txt2(featured.catName)}</span>}
+            <p className="mt-3 max-w-3xl font-display text-2xl font-semibold leading-tight text-white sm:text-4xl [html[lang='ta']_&]:!leading-[1.35] [html[lang='ta']_&]:text-xl [html[lang='ta']_&]:sm:text-3xl">{txt2(featured.title)}</p>
+            <p className="mt-2 text-sm font-semibold text-white/80">
+              {featured.kind === 'series' ? `${featured.classCount} ${locale === 'ta' ? 'வகுப்புகள்' : 'classes'}` : ''}{featured.kind === 'series' && featured.date ? ' · ' : ''}{featured.date ? formatDate(featured.date, locale) : ''}
+            </p>
           </div>
         </button>
       </section>
@@ -98,18 +172,17 @@ export default function VideoLibrary({ t, locale }: { t: T; locale: Locale }) {
           <ul className="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {shown.slice(0, limit).map((v) => (
               <li key={v.id}>
-                <button type="button" onClick={(e) => show(v, e)} aria-label={`${t.watch}: ${txt(v.title, locale)}`} className="group flex h-full w-full flex-col overflow-hidden rounded-xl bg-white text-left shadow-sm ring-1 ring-rose transition-shadow hover:shadow-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-saffron">
+                <button type="button" onClick={(e) => show(v, e)} aria-label={`${t.watch}: ${txt2(v.title)}`} className="group flex h-full w-full flex-col overflow-hidden rounded-xl bg-white text-left shadow-sm ring-1 ring-rose transition-shadow hover:shadow-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-saffron">
                   <span className="relative block aspect-video w-full overflow-hidden bg-maroon">
                     <span className="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-105" style={{ backgroundImage: `url('${v.thumb}'), linear-gradient(135deg, #7A1C1C, #231A18)` }} />
                     <span aria-hidden="true" className="absolute inset-0 bg-charcoal/20 transition-colors group-hover:bg-charcoal/40" />
                     <span className="absolute inset-0 flex items-center justify-center"><PlayBadge /></span>
-                    <span className="absolute bottom-2 right-2 rounded bg-charcoal/85 px-2 py-0.5 text-xs font-bold tabular-nums text-white">{clock(v.duration)}</span>
+                    {v.kind === 'series' && <span className="absolute bottom-2 right-2 rounded bg-charcoal/85 px-2 py-0.5 text-xs font-bold text-white">{v.classCount} {locale === 'ta' ? 'வகுப்புகள்' : 'classes'}</span>}
                   </span>
                   <span className="flex flex-1 flex-col p-4">
-                    <span className="self-start rounded-full bg-rose px-2.5 py-0.5 text-xs font-bold text-maroon">{seriesName(v.series, locale)}</span>
-                    <span className="mt-2 font-display text-xl font-semibold leading-snug text-charcoal [html[lang='ta']_&]:!leading-[1.4] [html[lang='ta']_&]:text-lg">{txt(v.title, locale)}</span>
-                    <span className="mt-1 text-sm text-charcoal/75">{txt(v.desc, locale)}</span>
-                    <span className="mt-auto pt-3 text-xs font-semibold text-charcoal/60">{formatDate(v.date, locale)}</span>
+                    {v.catName && <span className="self-start rounded-full bg-rose px-2.5 py-0.5 text-xs font-bold text-maroon">{txt2(v.catName)}</span>}
+                    <span className="mt-2 font-display text-xl font-semibold leading-snug text-charcoal [html[lang='ta']_&]:!leading-[1.4] [html[lang='ta']_&]:text-lg">{txt2(v.title)}</span>
+                    {v.date && <span className="mt-auto pt-3 text-xs font-semibold text-charcoal/60">{formatDate(v.date, locale)}</span>}
                   </span>
                 </button>
               </li>
@@ -141,26 +214,49 @@ export default function VideoLibrary({ t, locale }: { t: T; locale: Locale }) {
       </section>
 
       {/* Pop-up player */}
-      <dialog ref={dialogRef} onClose={() => setOpen(null)} onClick={(e) => { if (e.target === dialogRef.current) close(); }} aria-label={open ? txt(open.title, locale) : t.watch} className="m-auto w-[min(60rem,94vw)] rounded-2xl bg-charcoal p-0 text-white backdrop:bg-charcoal/80">
+      <dialog ref={dialogRef} onClose={() => setOpen(null)} onClick={(e) => { if (e.target === dialogRef.current) close(); }} aria-label={open ? txt2(open.title) : t.watch} className="m-auto max-h-[94vh] w-[min(60rem,94vw)] overflow-y-auto rounded-2xl bg-charcoal p-0 text-white backdrop:bg-charcoal/80">
         {open && (
           <div>
             <div className="relative aspect-video w-full bg-black">
-              {open.youtubeId ? (
-                <iframe src={`https://www.youtube-nocookie.com/embed/${open.youtubeId}?autoplay=1&rel=0`} title={txt(open.title, locale)} allow="autoplay; encrypted-media; picture-in-picture" allowFullScreen className="absolute inset-0 h-full w-full" />
+              {playId ? (
+                <iframe key={playId} src={`https://www.youtube-nocookie.com/embed/${playId}?autoplay=1&rel=0`} title={txt2(open.title)} allow="autoplay; encrypted-media; picture-in-picture" allowFullScreen className="absolute inset-0 h-full w-full" />
               ) : (
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-cover bg-center p-6 text-center" style={{ backgroundImage: `linear-gradient(rgba(35,26,24,.8), rgba(35,26,24,.8)), url('${open.thumb}')` }}>
-                  <p className="font-display text-3xl font-semibold text-white">{t.comingSoon}</p>
-                  <p className="mt-2 max-w-md text-white/80">{t.comingSoonText}</p>
+                  <p className="font-display text-3xl font-semibold text-white">{clsLoading ? (locale === 'ta' ? 'ஏற்றுகிறது...' : 'Loading...') : t.comingSoon}</p>
+                  {!clsLoading && <p className="mt-2 max-w-md text-white/80">{t.comingSoonText}</p>}
                 </div>
               )}
             </div>
             <div className="flex items-start justify-between gap-4 p-5">
               <div>
-                <p className="font-display text-2xl font-semibold leading-snug text-white [html[lang='ta']_&]:!leading-[1.4] [html[lang='ta']_&]:text-xl">{txt(open.title, locale)}</p>
-                <p className="mt-1 text-sm text-white/75">{seriesName(open.series, locale)} · {clock(open.duration)} · {formatDate(open.date, locale)}</p>
+                <p className="font-display text-2xl font-semibold leading-snug text-white [html[lang='ta']_&]:!leading-[1.4] [html[lang='ta']_&]:text-xl">{txt2(open.title)}</p>
+                <p className="mt-1 text-sm text-white/75">
+                  {[open.catName ? txt2(open.catName) : '', playing ? `${playing.sort_order}. ${locale === 'ta' ? playing.title_ta || playing.title_en : playing.title_en}` : '', open.date ? formatDate(open.date, locale) : ''].filter(Boolean).join(' · ')}
+                </p>
               </div>
               <button type="button" onClick={close} className="shrink-0 rounded-md border border-white/40 px-4 py-2 text-sm font-semibold hover:bg-white hover:text-charcoal focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-saffron">{t.close}</button>
             </div>
+
+            {open.kind === 'series' && classes.length > 0 && (
+              <ol className="divide-y divide-white/10 border-t border-white/10">
+                {classes.map((c) => {
+                  const on = c.youtube_id === playId;
+                  return (
+                    <li key={c.id}>
+                      <button type="button" onClick={() => setPlayId(c.youtube_id)} className={`flex w-full items-center gap-4 px-5 py-3 text-left transition-colors ${on ? 'bg-white/10' : 'hover:bg-white/5'}`}>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={thumbOf(c.youtube_id)} alt="" loading="lazy" className="h-12 w-20 shrink-0 rounded object-cover" />
+                        <span className="min-w-0 flex-1">
+                          <span className="block font-bold text-white">{c.sort_order}. {locale === 'ta' ? c.title_ta || c.title_en : c.title_en}</span>
+                          {c.class_date && <span className="block text-sm text-white/65">{formatDate(c.class_date, locale)}</span>}
+                        </span>
+                        <span className={`text-sm font-bold ${on ? 'text-saffron' : 'text-white/60'}`}>{on ? (locale === 'ta' ? 'ஒலிக்கிறது' : 'Playing') : (locale === 'ta' ? 'இயக்கு' : 'Play')}</span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
           </div>
         )}
       </dialog>

@@ -1,0 +1,58 @@
+﻿{
+    "meta":  {
+                 "title":  "Ashramam",
+                 "description":  "Sri Swami Chidbhavananda Ashramam at Vedapuri, Theni: a centre for Vedantic learning and spiritual growth, founded in 1995 by Pujyasri Omkarananda Mahaswamigal."
+             },
+    "eyebrow":  "Vedapuri · Theni",
+    "title":  "Sri Swami Chidbhavananda Ashramam",
+    "tagline":  "Peaceful Happiness For All",
+    "heroAlt":  "The ashram at Vedapuri, Theni",
+    "est":  "Founded 1995",
+    "intro":  "A centre for Vedantic learning and spiritual growth, in the Western Ghats beside the Surabhi Saraswati river.",
+    "stats":  [
+                  {
+                      "value":  "1995",
+                      "label":  "Ashram founded by Pujyasri Omkarananda Mahaswamigal"
+                  },
+                  {
+                      "value":  "1992",
+                      "label":  "Vedanta Sastra Prachara Trust founded"
+                  },
+                  {
+                      "value":  "Western Ghats",
+                      "label":  "Beside the Surabhi Saraswati river"
+                  }
+              ],
+    "aboutTitle":  "A centre for Vedantic learning",
+    "aboutText1":  "The ashram at Theni was founded in 1995 by Pujyasri Omkarananda Mahaswamigal.",
+    "aboutText2":  "It is run by the Vedanta Sastra Prachara Trust, founded in 1992. The Trust\u0027s goal is to make the ashram a centre for Vedantic learning and spiritual growth.",
+    "trustLabel":  "Vedanta Sastra Prachara Trust · Reg. No. 226/1992",
+    "riverAlt":  "The Surabhi Saraswati river near the ashram",
+    "settingTitle":  "In the lap of the Western Ghats",
+    "settingText":  "The ashram lies in the Western Ghats, near the Surabhi Saraswati river. The setting suits chitta shuddhi, contemplation, meditation and prayer. Swamiji described it as a place of divine connectivity and inner peace. Visiting Vedanta teachers often hold classes here.",
+    "settingTags":  [
+                        "Chitta shuddhi",
+                        "Contemplation",
+                        "Meditation",
+                        "Prayer"
+                    ],
+    "facilitiesTitle":  "Inside the ashram",
+    "facilitiesText":  "The ashram provides clean, comfortable accommodation and food for devotees.",
+    "facilities":  [
+                       "Adi Guru Sri Prajna Dakshinamurti Vidyapitham",
+                       "Ghosala",
+                       "Veda Patashala",
+                       "Agni Global Classroom",
+                       "Sri Bharati Tirtha Vidyarthi Vilasa",
+                       "Annalakshmi Dining Hall"
+                   ],
+    "quote":  {
+                  "text":  "Only those who study the Gita can survive the sorrows and vagaries of life.",
+                  "source":  "Pujyasri Omkarananda Mahaswamigal"
+              },
+    "visitTitle":  "Visit the ashram",
+    "address":  "Sri Swami Chidbhavananda Ashramam, Chatrapatti Road, Vedapuri, Theni, Tamil Nadu 625 531",
+    "visitCta":  "Contact us",
+    "moreTitle":  "Continue exploring",
+    "crumbLabel":  "Breadcrumb"
+}

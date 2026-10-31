@@ -3,14 +3,41 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
+import dotenv from 'dotenv';
 import jwt from 'jsonwebtoken';
+import Razorpay from 'razorpay';
 import { pool } from '../db';
 import { config } from '../config';
 import { authenticate } from '../middleware/auth';
 import { AuthenticatedRequest } from '../types';
 
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+
 const router = Router();
 const JWT_SECRET = config.jwtSecret || process.env.JWT_SECRET || 'vedaneri-ashram-secret-key';
+const HOLD_MINUTES = 15;
+
+// ---------- Razorpay: two accounts. Each camp chooses one. ----------
+type Acct = 'seva' | 'donation';
+const clean = (v?: string) => (v || '').replace(/["'\s]/g, '');
+const ORG: Record<Acct, string> = {
+  seva: 'SRI DAKSHINAMURTI SEVA SAMITI',
+  donation: 'VEDANTA SASTHRA PRACHARA TRUST',
+};
+const acctOf = (v: any): Acct => (v === 'donation' ? 'donation' : 'seva');
+
+function keysFor(a: Acct) {
+  const p = a === 'donation' ? 'RAZORPAY_DONATION' : 'RAZORPAY_SEVA';
+  return { id: clean(process.env[`${p}_KEY_ID`]), secret: clean(process.env[`${p}_KEY_SECRET`]) };
+}
+const clients: Record<string, Razorpay> = {};
+function client(a: Acct): Razorpay {
+  const k = keysFor(a);
+  if (!k.id || !k.secret) throw new Error('NOT_CONFIGURED');
+  const key = `${a}:${k.id}`;
+  if (!clients[key]) clients[key] = new Razorpay({ key_id: k.id, key_secret: k.secret });
+  return clients[key];
+}
 
 // ---------- Uploads (images only) ----------
 const uploadDir = path.resolve(__dirname, '../../uploads/camps');
@@ -107,12 +134,15 @@ function readBody(b: any): { error?: string; v?: any } {
       start_time: start_time || null,
       end_time: end_time || null,
       fee_type, fee_amount, seats, status,
+      pay_account: acctOf(b.pay_account),
     },
   };
 }
 
+// Seats taken = confirmed registrations + unpaid ones still inside the hold time
+const HELD = `(r.status = 'REGISTERED' OR (r.status = 'PENDING' AND r.created_at > (NOW() - INTERVAL ${HOLD_MINUTES} MINUTE)))`;
 const CAMP_SELECT = `SELECT c.*, DATE_FORMAT(c.start_date,'%Y-%m-%d') AS sd, DATE_FORMAT(c.end_date,'%Y-%m-%d') AS ed,
-  COALESCE((SELECT SUM(r.members) FROM camp_registrations r WHERE r.camp_id = c.id AND r.status = 'REGISTERED'), 0) AS registered
+  COALESCE((SELECT SUM(r.members) FROM camp_registrations r WHERE r.camp_id = c.id AND ${HELD}), 0) AS registered
   FROM camps c`;
 const shape = (r: any) => ({ ...r, start_date: r.sd, end_date: r.ed, registered: Number(r.registered) || 0, fee_amount: Number(r.fee_amount) || 0 });
 
@@ -138,10 +168,10 @@ router.post('/admin', adminGuard, runUpload, async (req: Request, res: Response)
     const image = req.file ? `/uploads/camps/${req.file.filename}` : null;
     await pool.query(
       `INSERT INTO camps (id, slug, title_en, title_ta, description_en, description_ta, venue_en, venue_ta, start_date, end_date,
-         start_time, end_time, image_url, fee_type, fee_amount, seats, status)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         start_time, end_time, image_url, fee_type, fee_amount, seats, status, pay_account)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [id, slug, v.title_en, v.title_ta, v.description_en, v.description_ta, v.venue_en, v.venue_ta, v.start_date, v.end_date,
-       v.start_time, v.end_time, image, v.fee_type, v.fee_amount, v.seats, v.status]
+       v.start_time, v.end_time, image, v.fee_type, v.fee_amount, v.seats, v.status, v.pay_account]
     );
     return res.status(201).json({ id, slug });
   } catch (e: any) {
@@ -167,9 +197,9 @@ router.put('/admin/:id', adminGuard, runUpload, async (req: Request, res: Respon
 
     await pool.query(
       `UPDATE camps SET title_en=?, title_ta=?, description_en=?, description_ta=?, venue_en=?, venue_ta=?, start_date=?, end_date=?,
-         start_time=?, end_time=?, image_url=?, fee_type=?, fee_amount=?, seats=?, status=? WHERE id=?`,
+         start_time=?, end_time=?, image_url=?, fee_type=?, fee_amount=?, seats=?, status=?, pay_account=? WHERE id=?`,
       [v.title_en, v.title_ta, v.description_en, v.description_ta, v.venue_en, v.venue_ta, v.start_date, v.end_date,
-       v.start_time, v.end_time, image, v.fee_type, v.fee_amount, v.seats, v.status, req.params.id]
+       v.start_time, v.end_time, image, v.fee_type, v.fee_amount, v.seats, v.status, v.pay_account, req.params.id]
     );
     return res.json({ saved: true });
   } catch (e: any) {
@@ -203,8 +233,9 @@ router.delete('/admin/:id', adminGuard, async (req: Request, res: Response) => {
 router.get('/admin/:id/registrations', adminGuard, async (req: Request, res: Response) => {
   try {
     const [rows]: any = await pool.query(
-      `SELECT id, name, first_name, last_name, phone, email, members, adults, children, city, state, notes, status, created_at
-       FROM camp_registrations WHERE camp_id = ? ORDER BY id DESC LIMIT 2000`,
+      `SELECT id, name, first_name, last_name, phone, email, members, adults, children, city, state, notes, status,
+              amount, payment_status, razorpay_payment_id, created_at
+       FROM camp_registrations WHERE camp_id = ? AND status <> 'FAILED' ORDER BY id DESC LIMIT 2000`,
       [req.params.id]
     );
     return res.json({ registrations: rows });
@@ -224,17 +255,20 @@ const cell = (v: any) => {
 router.get('/admin/:id/registrations/export', adminGuard, async (req: Request, res: Response) => {
   try {
     const [rows]: any = await pool.query(
-      `SELECT first_name, last_name, name, phone, email, adults, children, members, city, state, notes, status, created_at
-       FROM camp_registrations WHERE camp_id = ? ORDER BY id ASC`,
+      `SELECT first_name, last_name, name, phone, email, adults, children, members, city, state, notes, status,
+              amount, payment_status, razorpay_payment_id, created_at
+       FROM camp_registrations WHERE camp_id = ? AND status <> 'FAILED' ORDER BY id ASC`,
       [req.params.id]
     );
-    const head = ['First name', 'Last name', 'Mobile', 'Email', 'Adults', 'Children', 'Total people', 'City', 'State', 'Note', 'Status', 'Registered on'];
+    const head = ['First name', 'Last name', 'Mobile', 'Email', 'Adults', 'Children', 'Total people', 'City', 'State', 'Note', 'Status',
+      'Amount', 'Payment', 'Payment id', 'Registered on'];
     const lines = [head.map(cell).join(',')];
     for (const r of rows) {
       const first = r.first_name || String(r.name || '').split(' ')[0] || '';
       const last = r.last_name || String(r.name || '').split(' ').slice(1).join(' ');
       lines.push(
         [first, last, r.phone, r.email, r.adults, r.children, r.members, r.city, r.state, r.notes, r.status,
+          r.amount, r.payment_status, r.razorpay_payment_id,
           r.created_at ? new Date(r.created_at).toISOString().slice(0, 16).replace('T', ' ') : '']
           .map(cell).join(',')
       );
@@ -255,7 +289,8 @@ router.get('/public', async (_req: Request, res: Response) => {
       `${CAMP_SELECT} WHERE c.status IN ('published','closed') AND c.end_date >= ? ORDER BY c.start_date ASC LIMIT 100`,
       [todayYmd()]
     );
-    return res.json({ camps: rows.map(shape) });
+    // pay_account is internal and not sent to visitors
+    return res.json({ camps: rows.map((r: any) => { const { pay_account, ...rest } = shape(r); return rest; }) });
   } catch (e: any) {
     console.error('Camps public error:', e?.message || e);
     return res.status(500).json({ camps: [] });
@@ -266,14 +301,15 @@ router.get('/public/:slug', async (req: Request, res: Response) => {
   try {
     const [rows]: any = await pool.query(`${CAMP_SELECT} WHERE c.slug = ? AND c.status IN ('published','closed') LIMIT 1`, [req.params.slug]);
     if (!rows.length) return res.status(404).json({ message: 'Camp not found' });
-    return res.json({ camp: shape(rows[0]) });
+    const { pay_account, ...rest } = shape(rows[0]);
+    return res.json({ camp: rest });
   } catch (e: any) {
     console.error('Camp public one error:', e?.message || e);
     return res.status(500).json({ message: 'Failed to load the camp' });
   }
 });
 
-// Camps this devotee has already registered for (so the website can show "You are registered")
+// Camps this devotee has already registered for
 router.get('/my-registrations', authDevotee, async (req: any, res: Response) => {
   try {
     const [rows]: any = await pool.query(
@@ -287,7 +323,9 @@ router.get('/my-registrations', authDevotee, async (req: any, res: Response) => 
   }
 });
 
-// Devotee registration (login required). Every field is checked again here.
+// =================== REGISTER (login required) ===================
+// Free camp: registers at once. Paid camp: creates a payment order; the registration is confirmed in /verify.
+// One registration per devotee per camp. It cannot be changed afterwards.
 router.post('/:id/register', authDevotee, async (req: any, res: Response) => {
   try {
     const b = req.body || {};
@@ -322,41 +360,189 @@ router.post('/:id/register', authDevotee, async (req: any, res: Response) => {
     if (stateRaw && !PLACE_RE.test(stateRaw)) return fail('state', 'State can contain only letters.');
 
     const notes = str(b.notes, 500).replace(NOTE_BAD, '') || null;
+    const devoteeId = String(req.devoteeId);
 
     const [cs]: any = await pool.query(`${CAMP_SELECT} WHERE c.id = ? LIMIT 1`, [req.params.id]);
     if (!cs.length || cs[0].status !== 'published') return res.status(400).json({ message: 'Registration is not open for this camp.' });
     const camp = shape(cs[0]);
     if (camp.end_date < todayYmd()) return res.status(400).json({ message: 'This camp has already ended.' });
 
-    // If this devotee is changing an earlier registration, their old people are not counted twice
-    const [mine]: any = await pool.query(
-      `SELECT members FROM camp_registrations WHERE camp_id = ? AND devotee_id = ? AND status = 'REGISTERED' LIMIT 1`,
-      [camp.id, String(req.devoteeId)]
+    // One registration only
+    const [ex]: any = await pool.query(
+      `SELECT id, status, amount, razorpay_order_id FROM camp_registrations WHERE camp_id = ? AND devotee_id = ? LIMIT 1`,
+      [camp.id, devoteeId]
     );
-    const already = mine.length ? Number(mine[0].members) || 0 : 0;
-    if (camp.seats > 0 && camp.registered - already + members > camp.seats) {
-      const left = Math.max(0, camp.seats - (camp.registered - already));
-      return res.status(400).json({
-        message: left > 0 ? `Only ${left} seat${left === 1 ? '' : 's'} left for this camp.` : 'This camp is full.',
-        code: 'FULL',
-        field: 'adults',
+    const existing = ex[0];
+    if (existing && existing.status === 'REGISTERED') {
+      return res.status(409).json({ message: 'You have already registered for this camp.', code: 'ALREADY_REGISTERED' });
+    }
+
+    // Seats, not counting this devotee's own earlier unpaid attempt
+    if (camp.seats > 0) {
+      const [t]: any = await pool.query(
+        `SELECT COALESCE(SUM(r.members),0) AS n FROM camp_registrations r WHERE r.camp_id = ? AND r.devotee_id <> ? AND ${HELD}`,
+        [camp.id, devoteeId]
+      );
+      const taken = Number(t[0]?.n) || 0;
+      if (taken + members > camp.seats) {
+        const left = Math.max(0, camp.seats - taken);
+        return res.status(400).json({
+          message: left > 0 ? `Only ${left} seat${left === 1 ? '' : 's'} left for this camp.` : 'This camp is full.',
+          code: 'FULL',
+          field: 'adults',
+        });
+      }
+    }
+
+    const paid = camp.fee_type === 'paid' && camp.fee_amount > 0;
+    const amount = paid ? Math.round(camp.fee_amount * members * 100) / 100 : 0;
+    const acct = acctOf(cs[0].pay_account);
+
+    if (paid) {
+      const k = keysFor(acct);
+      if (!k.id || !k.secret) {
+        console.error(`[Camps] Razorpay keys for the ${acct} account are missing.`);
+        return res.status(503).json({ message: 'Online payment is temporarily unavailable. Please try again later.' });
+      }
+    }
+
+    // Save the registration (PENDING until paid, or REGISTERED at once when free)
+    await pool.query(
+      `INSERT INTO camp_registrations
+         (camp_id, devotee_id, name, first_name, last_name, phone, email, adults, children, members, city, state, notes,
+          amount, payment_status, status)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+       ON DUPLICATE KEY UPDATE name = VALUES(name), first_name = VALUES(first_name), last_name = VALUES(last_name),
+         phone = VALUES(phone), email = VALUES(email), adults = VALUES(adults), children = VALUES(children),
+         members = VALUES(members), city = VALUES(city), state = VALUES(state), notes = VALUES(notes),
+         amount = VALUES(amount), payment_status = VALUES(payment_status), status = VALUES(status),
+         created_at = NOW()`,
+      [camp.id, devoteeId, `${first} ${last}`, first, last, phone, email, adults, children, members, city, stateRaw || null, notes,
+        amount, paid ? 'PENDING' : 'NONE', paid ? 'PENDING' : 'REGISTERED']
+    );
+
+    if (!paid) return res.json({ registered: true, members });
+
+    const [row]: any = await pool.query('SELECT id FROM camp_registrations WHERE camp_id = ? AND devotee_id = ? LIMIT 1', [camp.id, devoteeId]);
+    const regId = row[0].id;
+    const keys = keysFor(acct);
+
+    // Reuse the earlier order when nothing about the amount changed
+    if (existing && existing.status === 'PENDING' && existing.razorpay_order_id && Number(existing.amount) === amount) {
+      return res.json({
+        payment: { orderId: existing.razorpay_order_id, amount: Math.round(amount * 100), currency: 'INR', keyId: keys.id, orgName: ORG[acct], registrationId: regId },
+        members,
       });
     }
 
-    await pool.query(
-      `INSERT INTO camp_registrations
-         (camp_id, devotee_id, name, first_name, last_name, phone, email, adults, children, members, city, state, notes, status)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?, 'REGISTERED')
-       ON DUPLICATE KEY UPDATE name = VALUES(name), first_name = VALUES(first_name), last_name = VALUES(last_name),
-         phone = VALUES(phone), email = VALUES(email), adults = VALUES(adults), children = VALUES(children),
-         members = VALUES(members), city = VALUES(city), state = VALUES(state), notes = VALUES(notes), status = 'REGISTERED'`,
-      [camp.id, String(req.devoteeId), `${first} ${last}`, first, last, phone, email, adults, children, members, city, stateRaw || null, notes]
-    );
-    return res.json({ registered: true, members });
+    let order: any;
+    try {
+      order = await client(acct).orders.create({
+        amount: Math.round(amount * 100),
+        currency: 'INR',
+        receipt: `CAMP_${regId}`,
+        notes: { campId: camp.id, registrationId: String(regId), devoteeId },
+      });
+    } catch (err: any) {
+      await pool.query(`UPDATE camp_registrations SET status = 'FAILED', payment_status = 'FAILED' WHERE id = ?`, [regId]);
+      console.error('Camp order error:', err?.error?.description || err?.message || err);
+      return res.status(502).json({ message: 'Could not start the payment. Please try again.' });
+    }
+    await pool.query('UPDATE camp_registrations SET razorpay_order_id = ? WHERE id = ?', [order.id, regId]);
+
+    return res.json({
+      payment: { orderId: order.id, amount: order.amount, currency: order.currency, keyId: keys.id, orgName: ORG[acct], registrationId: regId },
+      members,
+    });
   } catch (e: any) {
     console.error('Camp register error:', e?.message || e);
     return res.status(500).json({ message: 'Could not register. Please try again.' });
   }
 });
+
+// Confirms the payment and completes the registration
+router.post('/:id/verify', authDevotee, async (req: any, res: Response) => {
+  try {
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature, registrationId } = req.body || {};
+    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature || !registrationId) {
+      return res.status(400).json({ message: 'Missing payment details' });
+    }
+
+    const [rows]: any = await pool.query(
+      `SELECT r.id, r.status, r.members, r.razorpay_order_id, c.pay_account
+       FROM camp_registrations r JOIN camps c ON c.id = r.camp_id
+       WHERE r.id = ? AND r.camp_id = ? AND r.devotee_id = ? LIMIT 1`,
+      [registrationId, req.params.id, String(req.devoteeId)]
+    );
+    if (!rows.length) return res.status(404).json({ message: 'Registration not found' });
+    const r = rows[0];
+    if (!r.razorpay_order_id || r.razorpay_order_id !== String(razorpay_order_id)) {
+      return res.status(400).json({ message: 'Payment does not match this registration' });
+    }
+    if (r.status === 'REGISTERED') return res.json({ registered: true, members: r.members });
+
+    const secret = keysFor(acctOf(r.pay_account)).secret;
+    if (!secret) return res.status(503).json({ message: 'Online payment is temporarily unavailable.' });
+
+    const expected = crypto.createHmac('sha256', secret).update(`${razorpay_order_id}|${razorpay_payment_id}`).digest('hex');
+    const a = Buffer.from(expected);
+    const b = Buffer.from(String(razorpay_signature));
+    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+      return res.status(400).json({ message: 'Signature verification failed' });
+    }
+
+    await pool.query(
+      `UPDATE camp_registrations SET status = 'REGISTERED', payment_status = 'PAID', razorpay_payment_id = ? WHERE id = ?`,
+      [String(razorpay_payment_id), r.id]
+    );
+    return res.json({ registered: true, members: r.members });
+  } catch (e: any) {
+    console.error('Camp verify error:', e?.message || e);
+    return res.status(500).json({ message: 'Could not confirm the payment. Please contact the ashram with your payment id.' });
+  }
+});
+
+// Settles unpaid registrations whose payment window was closed. Asks Razorpay before releasing the seats.
+let sweeping = false;
+export async function syncPendingCampPayments(): Promise<void> {
+  if (sweeping) return;
+  sweeping = true;
+  try {
+    const [rows]: any = await pool.query(
+      `SELECT r.id, r.razorpay_order_id, r.amount, c.pay_account
+       FROM camp_registrations r JOIN camps c ON c.id = r.camp_id
+       WHERE r.status = 'PENDING' AND r.created_at < (NOW() - INTERVAL ${HOLD_MINUTES} MINUTE) ORDER BY r.id ASC LIMIT 50`
+    );
+    for (const r of rows || []) {
+      try {
+        if (!r.razorpay_order_id) {
+          await pool.query(`UPDATE camp_registrations SET status = 'FAILED', payment_status = 'FAILED' WHERE id = ? AND status = 'PENDING'`, [r.id]);
+          continue;
+        }
+        const list: any = await client(acctOf(r.pay_account)).orders.fetchPayments(r.razorpay_order_id);
+        const captured = (list?.items || []).find((p: any) => p.status === 'captured');
+        if (!captured) {
+          await pool.query(`UPDATE camp_registrations SET status = 'FAILED', payment_status = 'FAILED' WHERE id = ? AND status = 'PENDING'`, [r.id]);
+          continue;
+        }
+        if (Math.round(Number(r.amount) * 100) !== Number(captured.amount)) {
+          console.error('[CampSync] Amount mismatch, needs review:', { registrationId: r.id, paymentId: captured.id });
+          continue;
+        }
+        await pool.query(
+          `UPDATE camp_registrations SET status = 'REGISTERED', payment_status = 'PAID', razorpay_payment_id = ? WHERE id = ? AND status = 'PENDING'`,
+          [String(captured.id), r.id]
+        );
+        console.log(`[CampSync] Registration ${r.id} confirmed from Razorpay.`);
+      } catch (err: any) {
+        console.warn(`[CampSync] Registration ${r.id} skipped:`, err?.error?.description || err?.message || err);
+      }
+    }
+  } catch (e: any) {
+    console.error('[CampSync] Run failed:', e?.message || e);
+  } finally {
+    sweeping = false;
+  }
+}
 
 export default router;

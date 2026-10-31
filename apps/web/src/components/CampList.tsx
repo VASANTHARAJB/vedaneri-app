@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { COUNTRY_CODES } from '@/data/countryCodes';
+import { loadRazorpayScript } from '@/lib/razorpay';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
 const FILES = API_BASE.replace(/\/api\/v1\/?$/, '');
@@ -30,6 +31,7 @@ const cleanName = (v: string) => v.replace(/[^\p{L}\p{M} .'-]/gu, '').replace(/\
 const cleanPlace = (v: string) => v.replace(/[^\p{L}\p{M} .-]/gu, '').replace(/\s{2,}/g, ' ').slice(0, 60);
 const cleanEmail = (v: string) => v.replace(/[^A-Za-z0-9._+\-@]/g, '').slice(0, 100);
 const cleanNote = (v: string) => v.replace(/[^\p{L}\p{M}\p{N} ,.\-/#():;!?'\n]/gu, '').slice(0, 500);
+const rupees = (n: number) => `₹ ${Number(n).toLocaleString('en-IN')}`;
 
 type Form = { first: string; last: string; email: string; cc: string; phone: string; adults: string; children: string; city: string; state: string; notes: string };
 const emptyForm: Form = { first: '', last: '', email: '', cc: '+91', phone: '', adults: '1', children: '0', city: '', state: '', notes: '' };
@@ -58,13 +60,12 @@ export default function CampList({ locale }: Props) {
   const [error, setError] = useState('');
   const [mine, setMine] = useState<Record<string, number>>({});
 
-  // Registration pop-up
   const [active, setActive] = useState<Camp | null>(null);
   const [f, setF] = useState<Form>({ ...emptyForm });
   const [errs, setErrs] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [prefilling, setPrefilling] = useState(false);
-  const [done, setDone] = useState<{ camp: Camp; people: number } | null>(null);
+  const [done, setDone] = useState<{ camp: Camp; people: number; paid: boolean } | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
 
   const loginHref = `/${locale}/login?redirect=${encodeURIComponent(`/${locale}/camps`)}`;
@@ -100,10 +101,10 @@ export default function CampList({ locale }: Props) {
 
   useEffect(() => { load(); loadMine(); }, [load, loadMine]);
 
-  // Open the pop-up and fill in what the devotee profile already knows
   async function openForm(c: Camp) {
     const tk = token();
     if (!tk) { window.location.href = loginHref; return; }
+    if (mine[c.id]) return;
     setActive(c); setErrs({}); setF({ ...emptyForm }); setPrefilling(true);
     try {
       const res = await fetch(`${API_BASE}/devotee/profile`, { headers: { Authorization: `Bearer ${tk}` } });
@@ -141,6 +142,67 @@ export default function CampList({ locale }: Props) {
     }, 50);
   }
 
+  // Opens the payment window, then confirms the payment with the server
+  async function startPayment(camp: Camp, p: any, tk: string, people: number) {
+    const ready = await loadRazorpayScript();
+    if (!ready) {
+      setErrs({ form: tr('Secure payment could not be loaded. Check your internet connection and try again.', 'பாதுகாப்பான கட்டண சேவையை ஏற்ற இயலவில்லை. இணைய இணைப்பைச் சரிபார்க்கவும்.') });
+      setBusy(false);
+      return;
+    }
+    let paid = false;
+    const title = isTa ? camp.title_ta || camp.title_en : camp.title_en;
+    const instance = new (window as any).Razorpay({
+      key: p.keyId,
+      amount: p.amount,
+      currency: p.currency,
+      name: p.orgName,
+      description: title,
+      order_id: p.orderId,
+      prefill: { name: `${f.first} ${f.last}`.trim(), email: f.email.trim(), contact: `${f.cc}${f.phone}` },
+      theme: { color: '#3b0d0d' },
+      modal: {
+        ondismiss: () => {
+          if (paid) return;
+          setBusy(false);
+          setErrs({ form: tr('The payment was not completed. Your seats are held for 15 minutes. Press the button again to pay.', 'கட்டணம் நிறைவடையவில்லை. உங்கள் இடங்கள் 15 நிமிடங்கள் பிடித்து வைக்கப்படும். மீண்டும் செலுத்த பொத்தானை அழுத்தவும்.') });
+        },
+      },
+      handler: async (resp: any) => {
+        paid = true;
+        try {
+          const vr = await fetch(`${API_BASE}/camps/${camp.id}/verify`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tk}` },
+            body: JSON.stringify({
+              razorpay_order_id: resp.razorpay_order_id,
+              razorpay_payment_id: resp.razorpay_payment_id,
+              razorpay_signature: resp.razorpay_signature,
+              registrationId: p.registrationId,
+            }),
+          });
+          const vd = await readJson(vr);
+          if (vr.ok && vd.registered) {
+            setDone({ camp, people: vd.members || people, paid: true });
+            setActive(null);
+            load(); loadMine();
+          } else {
+            setErrs({ form: `${vd.message || tr('We could not confirm your payment.', 'கட்டணத்தை உறுதிசெய்ய இயலவில்லை.')} ${tr('If money was deducted, it will be confirmed automatically within a few minutes, or contact the ashram with this payment id:', 'பணம் எடுக்கப்பட்டிருந்தால் சில நிமிடங்களில் தானாக உறுதியாகும், அல்லது இந்த கட்டண எண்ணுடன் ஆசிரமத்தைத் தொடர்பு கொள்ளவும்:')} ${resp.razorpay_payment_id}` });
+          }
+        } catch {
+          setErrs({ form: `${tr('Network error while confirming. If money was deducted, it will be confirmed automatically, or contact the ashram with this payment id:', 'உறுதிப்படுத்தும்போது இணைய பிழை. பணம் எடுக்கப்பட்டிருந்தால் தானாக உறுதியாகும், அல்லது இந்த கட்டண எண்ணுடன் தொடர்பு கொள்ளவும்:')} ${resp.razorpay_payment_id}` });
+        } finally {
+          setBusy(false);
+        }
+      },
+    });
+    instance.on('payment.failed', (resp: any) => {
+      const why = resp?.error?.description;
+      setErrs({ form: why ? `${tr('Payment failed', 'கட்டணம் தோல்வியடைந்தது')}: ${why}` : tr('Payment failed. Please try again.', 'கட்டணம் தோல்வியடைந்தது. மீண்டும் முயற்சிக்கவும்.') });
+    });
+    instance.open();
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!active || busy) return;
@@ -158,7 +220,7 @@ export default function CampList({ locale }: Props) {
     if (!Number.isFinite(adults) || adults < 1 || adults > 20) x.adults = tr('Adults must be between 1 and 20.', 'பெரியவர்கள் 1 முதல் 20 வரை இருக்க வேண்டும்.');
     if (children < 0 || children > 20) x.children = tr('Children must be between 0 and 20.', 'குழந்தைகள் 0 முதல் 20 வரை இருக்க வேண்டும்.');
     if (!x.adults && !x.children && active.seats > 0) {
-      const left = Math.max(0, active.seats - (active.registered - (mine[active.id] || 0)));
+      const left = Math.max(0, active.seats - active.registered);
       if (adults + children > left) x.adults = left > 0 ? tr(`Only ${left} seat(s) left.`, `${left} இடங்கள் மட்டுமே உள்ளன.`) : tr('This camp is full.', 'இந்த முகாம் நிரம்பியது.');
     }
     if (!PLACE_RE.test(f.city.trim())) x.city = tr('Enter your city (letters only).', 'நகரத்தை உள்ளிடவும்.');
@@ -167,12 +229,13 @@ export default function CampList({ locale }: Props) {
     setErrs(x);
     const order = ['first', 'last', 'email', 'phone', 'adults', 'children', 'city', 'state'];
     const bad = order.filter((k) => x[k]);
-    if (bad.length) { focusFirst(bad.map((k) => (k === 'first' ? 'cf-first' : k === 'last' ? 'cf-last' : `cf-${k}`))); return; }
+    if (bad.length) { focusFirst(bad.map((k) => `cf-${k}`)); return; }
 
     const tk = token();
     if (!tk) { window.location.href = loginHref; return; }
 
     setBusy(true);
+    let keepBusy = false;
     try {
       const res = await fetch(`${API_BASE}/camps/${active.id}/register`, {
         method: 'POST',
@@ -184,19 +247,28 @@ export default function CampList({ locale }: Props) {
       });
       const d = await readJson(res);
       if (res.status === 401) { setErrs({ form: tr('Your session has ended. Please sign in again.', 'உங்கள் அமர்வு முடிந்தது. மீண்டும் உள்நுழையவும்.') }); return; }
+      if (res.status === 409) {
+        setErrs({ form: tr('You have already registered for this camp.', 'நீங்கள் ஏற்கெனவே இந்த முகாமிற்குப் பதிவு செய்துள்ளீர்கள்.') });
+        loadMine();
+        return;
+      }
       if (!res.ok) {
-        const map: Record<string, string> = { first_name: 'first', last_name: 'last' };
-        const key = map[d.field] || d.field;
+        const key = d.field === 'first_name' ? 'first' : d.field === 'last_name' ? 'last' : d.field;
         setErrs(key ? { [key]: d.message } : { form: d.message || tr('Could not register. Please try again.', 'பதிவு செய்ய இயலவில்லை.') });
         return;
       }
-      setDone({ camp: active, people: d.members || adults + children });
+      if (d.payment) {
+        keepBusy = true;
+        await startPayment(active, d.payment, tk, d.members || adults + children);
+        return;
+      }
+      setDone({ camp: active, people: d.members || adults + children, paid: false });
       setActive(null);
       load(); loadMine();
     } catch {
       setErrs({ form: tr('Network error. Please try again.', 'இணைய பிழை. மீண்டும் முயற்சிக்கவும்.') });
     } finally {
-      setBusy(false);
+      if (!keepBusy) setBusy(false);
     }
   }
 
@@ -226,13 +298,15 @@ export default function CampList({ locale }: Props) {
   }
 
   const total = active ? (Math.floor(Number(f.adults)) || 0) + (Math.floor(Number(f.children)) || 0) : 0;
+  const activePaid = !!active && active.fee_type === 'paid' && active.fee_amount > 0;
+  const amountToPay = activePaid ? active!.fee_amount * total : 0;
 
   return (
     <>
       {done && (
         <div role="status" className="mb-6 flex flex-col gap-3 rounded-lg border border-emerald-200 border-l-4 border-l-emerald-600 bg-emerald-50 p-5 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="font-display text-xl font-semibold text-emerald-900">{tr('You are registered', 'நீங்கள் பதிவு செய்யப்பட்டீர்கள்')}</p>
+            <p className="font-display text-xl font-semibold text-emerald-900">{done.paid ? tr('Payment received. You are registered.', 'கட்டணம் பெறப்பட்டது. நீங்கள் பதிவு செய்யப்பட்டீர்கள்.') : tr('You are registered', 'நீங்கள் பதிவு செய்யப்பட்டீர்கள்')}</p>
             <p className="mt-0.5 text-base text-emerald-900/85">
               {isTa ? done.camp.title_ta || done.camp.title_en : done.camp.title_en} · {done.people} {tr(done.people === 1 ? 'person' : 'people', 'நபர்கள்')}
             </p>
@@ -251,7 +325,7 @@ export default function CampList({ locale }: Props) {
           const pct = c.seats > 0 ? Math.min(100, Math.round((c.registered / c.seats) * 100)) : 0;
           const left = c.seats > 0 ? Math.max(0, c.seats - c.registered) : 0;
           const registered = mine[c.id];
-          const canRegister = !closed && (!full || !!registered);
+          const paidCamp = c.fee_type === 'paid' && c.fee_amount > 0;
 
           return (
             <article key={c.id} className="group flex flex-col overflow-hidden rounded-lg border border-sand bg-white shadow-sm transition-shadow hover:shadow-lg">
@@ -281,7 +355,7 @@ export default function CampList({ locale }: Props) {
                   <div className="flex justify-between gap-3 px-4 py-2.5"><dt className="font-semibold text-charcoal/60">{tr('Dates', 'தேதி')}</dt><dd className="text-right font-bold text-charcoal">{fmt(c.start_date)}{c.end_date !== c.start_date ? ` - ${fmt(c.end_date)}` : ''}</dd></div>
                   {c.start_time && <div className="flex justify-between gap-3 px-4 py-2.5"><dt className="font-semibold text-charcoal/60">{tr('Time', 'நேரம்')}</dt><dd className="text-right font-bold text-charcoal">{c.start_time}{c.end_time ? ` - ${c.end_time}` : ''}</dd></div>}
                   {venue && <div className="flex justify-between gap-3 px-4 py-2.5"><dt className="font-semibold text-charcoal/60">{tr('Venue', 'இடம்')}</dt><dd className="text-right font-bold text-charcoal">{venue}</dd></div>}
-                  <div className="flex justify-between gap-3 px-4 py-2.5"><dt className="font-semibold text-charcoal/60">{tr('Fee', 'கட்டணம்')}</dt><dd className="text-right font-bold text-charcoal">{c.fee_type === 'paid' ? `₹ ${Number(c.fee_amount).toLocaleString('en-IN')} ${tr('(pay at venue)', '(இடத்தில்)')}` : tr('Free', 'இலவசம்')}</dd></div>
+                  <div className="flex justify-between gap-3 px-4 py-2.5"><dt className="font-semibold text-charcoal/60">{tr('Fee', 'கட்டணம்')}</dt><dd className="text-right font-bold text-charcoal">{paidCamp ? `${rupees(c.fee_amount)} ${tr('per person', 'ஒருவருக்கு')}` : tr('Free', 'இலவசம்')}</dd></div>
                 </dl>
 
                 {desc && <p className="line-clamp-3 font-serif text-base leading-relaxed text-charcoal/80">{desc}</p>}
@@ -299,13 +373,17 @@ export default function CampList({ locale }: Props) {
                 )}
 
                 <div className="mt-auto pt-1">
-                  {canRegister ? (
-                    <button type="button" onClick={() => openForm(c)} className="w-full rounded-md bg-maroon px-5 py-3.5 text-base font-bold text-white transition-colors hover:bg-saffron hover:text-charcoal focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-maroon">
-                      {registered ? tr('Change my registration', 'என் பதிவை மாற்று') : token() ? tr('Register now', 'இப்போது பதிவு செய்') : tr('Sign in to register', 'பதிவு செய்ய உள்நுழைக')}
+                  {registered ? (
+                    <button type="button" disabled className="w-full cursor-not-allowed rounded-md border border-emerald-300 bg-emerald-50 px-5 py-3.5 text-base font-bold text-emerald-800">
+                      {tr('You are registered', 'நீங்கள் பதிவு செய்துள்ளீர்கள்')}
                     </button>
-                  ) : (
+                  ) : closed || full ? (
                     <button type="button" disabled className="w-full cursor-not-allowed rounded-md bg-sand/60 px-5 py-3.5 text-base font-bold text-charcoal/50">
                       {closed ? tr('Registration closed', 'பதிவு முடிந்தது') : tr('Full', 'நிரம்பியது')}
+                    </button>
+                  ) : (
+                    <button type="button" onClick={() => openForm(c)} className="w-full rounded-md bg-maroon px-5 py-3.5 text-base font-bold text-white transition-colors hover:bg-saffron hover:text-charcoal focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-maroon">
+                      {!token() ? tr('Sign in to register', 'பதிவு செய்ய உள்நுழைக') : paidCamp ? tr('Register and pay', 'பதிவு செய்து செலுத்து') : tr('Register now', 'இப்போது பதிவு செய்')}
                     </button>
                   )}
                 </div>
@@ -332,6 +410,9 @@ export default function CampList({ locale }: Props) {
                 </p>
               )}
               {prefilling && <p className="text-sm font-semibold text-charcoal/60">{tr('Loading your details...', 'உங்கள் விவரங்கள் ஏற்றப்படுகின்றன...')}</p>}
+              <p className="rounded-md border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
+                {tr('A registration cannot be changed after it is confirmed. Please check the details before you continue.', 'பதிவு உறுதியான பின் மாற்ற இயலாது. தொடரும் முன் விவரங்களைச் சரிபார்க்கவும்.')}
+              </p>
 
               <section className="space-y-4">
                 <h3 className="border-b border-sand pb-2 text-sm font-bold uppercase tracking-[0.14em] text-maroon">{tr('Your details', 'உங்கள் விவரங்கள்')}</h3>
@@ -386,12 +467,22 @@ export default function CampList({ locale }: Props) {
                   <textarea id="cf-notes" rows={3} maxLength={500} value={f.notes} onChange={(e) => set('notes', cleanNote(e.target.value))} className="w-full rounded-md border border-sand bg-white px-3.5 py-3 text-base text-charcoal focus:border-maroon focus:outline-none focus:ring-2 focus:ring-saffron/40" />
                 </Field>
               </section>
+
+              {activePaid && (
+                <section className="flex items-end justify-between rounded-md border border-saffron bg-saffron/10 px-5 py-4">
+                  <div>
+                    <p className="text-sm font-bold uppercase tracking-wider text-charcoal/60">{tr('Amount to pay', 'செலுத்த வேண்டிய தொகை')}</p>
+                    <p className="text-sm text-charcoal/70">{rupees(active!.fee_amount)} × {total} {tr(total === 1 ? 'person' : 'people', 'நபர்கள்')}</p>
+                  </div>
+                  <p className="font-display text-3xl font-bold text-maroon">{rupees(amountToPay)}</p>
+                </section>
+              )}
             </div>
 
             <div className="flex flex-col-reverse gap-3 border-t border-sand bg-cream/40 px-6 py-4 sm:flex-row sm:justify-end">
               <button type="button" disabled={busy} onClick={() => setActive(null)} className="rounded-md border border-sand bg-white px-6 py-3 text-base font-bold text-charcoal hover:border-maroon disabled:opacity-60">{tr('Cancel', 'ரத்து')}</button>
               <button type="submit" disabled={busy} className="rounded-md bg-maroon px-8 py-3 text-base font-bold text-white transition-colors hover:bg-charcoal disabled:opacity-60">
-                {busy ? tr('Registering...', 'பதிவு செய்கிறது...') : tr('Confirm registration', 'பதிவை உறுதி செய்')}
+                {busy ? tr('Please wait...', 'காத்திருக்கவும்...') : activePaid ? `${tr('Pay', 'செலுத்து')} ${rupees(amountToPay)}` : tr('Confirm registration', 'பதிவை உறுதி செய்')}
               </button>
             </div>
           </form>

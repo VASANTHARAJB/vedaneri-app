@@ -3,7 +3,7 @@ import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
 import { config } from './config';
-import { testDbConnection } from './db';
+import { pool, testDbConnection } from './db';
 
 // Route Handlers
 import authRoutes from './routes/auth';
@@ -21,10 +21,16 @@ import panchangamRouter from './routes/panchangam';
 import { syncPendingBookings } from './services/sevaPendingSync';
 import donationPublicRouter from './routes/donationPublic';
 import donationBookingRouter, { syncPendingDonations } from './routes/donationBooking';
+
 import donationProfileRouter from './routes/donationProfile';
 import accountHistoryRouter from './routes/accountHistory';
-import campsRouter from './routes/camps'; 
 import './services/campsSchema';
+import campsRouter, { syncPendingCampPayments } from './routes/camps';
+import { ensureMagazineTables } from './services/magazineSchema';
+import magazineRouter, { syncMagazine } from './routes/magazine';
+import './services/discoverSchema';
+import discoverRouter from './routes/discover';
+import aboutPagesRouter from './routes/aboutPages';
 
 const app = express();
 const IS_PROD = process.env.NODE_ENV === 'production';
@@ -76,7 +82,6 @@ app.use(
   sevaWebhookRouter
 );
 
-
 // 5. Body Parsers
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
@@ -85,6 +90,34 @@ app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.get('/api/v1/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok', service: 'Vedaneri API Engine', timestamp: new Date() });
 });
+
+// TEMPORARY: open http://localhost:4000/api/v1/magazine-check in the browser.
+// It shows exactly which magazine step fails and the database's own message. Remove it once the page works.
+if (!IS_PROD) {
+  app.get('/api/v1/magazine-check', async (_req: Request, res: Response) => {
+    const out: Record<string, string> = {};
+    const step = async (name: string, fn: () => Promise<any>) => {
+      try {
+        const r = await fn();
+        out[name] = r === undefined ? 'ok' : `ok (${r})`;
+      } catch (e: any) {
+        out[name] = `FAILED: ${e?.sqlMessage || e?.message || String(e)}`;
+      }
+    };
+    await step('create tables', async () => ((await ensureMagazineTables()) ? 'ready' : 'not ready, see the API terminal'));
+    await step('read issues', async () => { const [r]: any = await pool.query('SELECT id FROM magazine_issues LIMIT 1'); return `${r.length} row`; });
+    await step('issue columns', async () => {
+      const [r]: any = await pool.query(
+        `SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'magazine_issues'`
+      );
+      return r.map((x: any) => x.COLUMN_NAME).join(', ');
+    });
+    await step('read plans', async () => { const [r]: any = await pool.query('SELECT id FROM magazine_plans LIMIT 1'); return `${r.length} row`; });
+    await step('read subscriptions', async () => { const [r]: any = await pool.query('SELECT id FROM magazine_subscriptions LIMIT 1'); return `${r.length} row`; });
+    await step('receipt counters', async () => { await pool.query('SELECT 1 FROM receipt_counters LIMIT 1'); });
+    res.json(out);
+  });
+}
 
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/dashboard', dashboardRouter);
@@ -102,13 +135,16 @@ app.use('/api/v1/donation-booking', donationBookingRouter);
 app.use('/api/v1/donation-profile', donationProfileRouter);
 app.use('/api/v1/account', accountHistoryRouter);
 app.use('/api/v1/camps', campsRouter);
+app.use('/api/v1/magazine', magazineRouter);
+app.use('/api/v1/discover', discoverRouter);
+app.use('/api/v1/pages', aboutPagesRouter);
 
 // 7. Global Error Handler (Must be after all routes)
 app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-  console.error('API Error:', err?.message || err);
+  console.error('API Error:', err?.sqlMessage || err?.message || err);
   const status = Number(err?.status) || 500;
   // Server errors never show internal details in production
-  const message = status >= 500 && IS_PROD ? 'Internal Server Error' : err?.message || 'Internal Server Error';
+  const message = status >= 500 && IS_PROD ? 'Internal Server Error' : err?.sqlMessage || err?.message || 'Internal Server Error';
   res.status(status).json({ message });
 });
 
@@ -126,4 +162,14 @@ app.listen(config.port, async () => {
   const runDonationSync = () => syncPendingDonations().catch((e) => console.error('[DonationSync]', e?.message || e));
   setTimeout(runDonationSync, 15_000);
   setInterval(runDonationSync, 60_000);
+
+  // Camp payments
+  const runCampSync = () => syncPendingCampPayments().catch((e) => console.error('[CampSync]', e?.message || e));
+  setTimeout(runCampSync, 20_000);
+  setInterval(runCampSync, 60_000);
+
+  // Magazine: expiry, unpaid orders and renewal reminders
+  const runMagazineSync = () => syncMagazine().catch((e) => console.error('[MagazineSync]', e?.message || e));
+  setTimeout(runMagazineSync, 25_000);
+  setInterval(runMagazineSync, 60_000);
 });

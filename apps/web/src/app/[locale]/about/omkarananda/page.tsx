@@ -8,19 +8,71 @@ import { isLocale } from '@/lib/i18n';
 
 type Params = { params: Promise<{ locale: string }> };
 
-export async function generateMetadata({ params }: Params): Promise<Metadata> {
-  const { locale } = await params;
-  if (!isLocale(locale)) return {};
-  const t = getDictionary(locale);
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
+const FILES = API_BASE.replace(/\/api\/v1\/?$/, '');
+const PAGE_URL = `${API_BASE}/pages/omkarananda`;
+
+type Bi = { en?: string; ta?: string };
+
+// Content saved in the CMS. If the API is down the page still shows the dictionary text,
+// and the reason is printed in the web terminal.
+async function loadContent(): Promise<{ c: any; image: string | null }> {
+  try {
+    const res = await fetch(PAGE_URL, { cache: 'no-store' });
+    if (!res.ok) {
+      console.error(`[omkarananda] fetch failed ${res.status} ${PAGE_URL}`);
+      return { c: {}, image: null };
+    }
+    const d = await res.json();
+    return { c: d.content || {}, image: d.image_url || null };
+  } catch (e: any) {
+    console.error(`[omkarananda] fetch error ${PAGE_URL}:`, e?.cause?.code || e?.message || e);
+    return { c: {}, image: null };
+  }
+}
+
+// CMS text when filled in, otherwise the dictionary text
+function build(base: any, c: any, locale: 'en' | 'ta') {
+  const pick = (b: Bi | undefined, fb: any) => (b && typeof b[locale] === 'string' && b[locale]!.trim() ? b[locale] : fb);
+  // A list from the CMS; any empty field inside an item falls back to the dictionary item at the same position
+  const list = (arr: any[] | undefined, fb: any[], map: (x: any, f: any) => any) =>
+    Array.isArray(arr) && arr.length > 0 ? arr.map((x, i) => map(x, fb?.[i] ?? {})) : fb;
   return {
-    title: `${t.omkarananda.meta.title} | ${t.site.name}`,
-    description: t.omkarananda.meta.description,
+    ...base,
+    meta: { title: pick(c.meta_title, base.meta.title), description: pick(c.meta_description, base.meta.description) },
+    eyebrow: pick(c.eyebrow, base.eyebrow),
+    name: pick(c.name, base.name),
+    profile: pick(c.profile, base.profile),
+    role: pick(c.role, base.role),
+    intro: pick(c.intro, base.intro),
+    tagline: pick(c.tagline, base.tagline),
+    photoAlt: pick(c.photoAlt, base.photoAlt),
+    samadhi: pick(c.samadhi, base.samadhi),
+    lifeTitle: pick(c.lifeTitle, base.lifeTitle),
+    todayTitle: pick(c.todayTitle, base.todayTitle),
+    todayIntro: pick(c.todayIntro, base.todayIntro),
+    abroadTitle: pick(c.abroadTitle, base.abroadTitle),
+    abroadText: pick(c.abroadText, base.abroadText),
+    listenTitle: pick(c.listenTitle, base.listenTitle),
+    listenText: pick(c.listenText, base.listenText),
+    listenAudio: pick(c.listenAudio, base.listenAudio),
+    listenVideo: pick(c.listenVideo, base.listenVideo),
+    moreTitle: pick(c.moreTitle, base.moreTitle),
+    facts: list(c.facts, base.facts, (f, b) => ({ label: pick(f.label, b.label ?? ''), value: pick(f.value, b.value ?? '') })),
+    timeline: list(c.timeline, base.timeline, (f, b) => ({ when: pick(f.when, b.when ?? ''), title: pick(f.title, b.title ?? ''), text: pick(f.text, b.text ?? '') })),
+    roles: list(c.roles, base.roles, (f, b) => ({ title: pick(f.title, b.title ?? ''), text: pick(f.text, b.text ?? '') })),
+    abroad: list(c.abroad, base.abroad, (f, b) => pick(f, typeof b === 'string' ? b : '')),
   };
 }
 
-// Portrait: put the photo at apps/web/public/images/omkarananda.jpg.
-// Until it exists, swamiji.jpg (the home page photo) is used, then a gradient.
-const PORTRAIT = `url('/images/omkarananda.jpg'), url('/images/swamiji.jpg'), linear-gradient(180deg, #F3E4E1 0%, #7A1C1C 100%)`;
+export async function generateMetadata({ params }: Params): Promise<Metadata> {
+  const { locale } = await params;
+  if (!isLocale(locale)) return {};
+  const dict = getDictionary(locale);
+  const { c } = await loadContent();
+  const t = build(dict.omkarananda, c, locale as 'en' | 'ta');
+  return { title: `${t.meta.title} | ${dict.site.name}`, description: t.meta.description };
+}
 
 function Flame({ className = '' }: { className?: string }) {
   return (
@@ -56,13 +108,17 @@ export default async function OmkaranandaPage({ params }: Params) {
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
   const dict = getDictionary(locale);
-  const t = dict.omkarananda;
+  const { c, image } = await loadContent();
+  const t = build(dict.omkarananda, c, locale as 'en' | 'ta');
   const href = (p: string) => `/${locale}${p}`;
   const more = [
     { label: dict.nav.ashramam, href: '/about/ashramam' },
     { label: dict.nav.adhishtanam, href: '/about/adhishtanam' },
     { label: dict.nav.vidyapitham, href: '/about/vidyapitham' },
   ];
+
+  // Portrait uploaded in the CMS first, then the old files, then a gradient
+  const PORTRAIT = `${image ? `url('${FILES}${image}'), ` : ''}url('/images/omkarananda.jpg'), url('/images/swamiji.jpg'), linear-gradient(180deg, #F3E4E1 0%, #7A1C1C 100%)`;
 
   return (
     <main>
@@ -125,8 +181,8 @@ export default async function OmkaranandaPage({ params }: Params) {
       {/* 2. Four dates, overlapping the hero */}
       <div className="mx-auto max-w-6xl px-4 lg:px-8">
         <dl className="relative z-10 -mt-10 grid gap-px overflow-hidden rounded-2xl bg-rose shadow-xl sm:grid-cols-2 lg:grid-cols-4">
-          {t.facts.map((f) => (
-            <div key={f.label} className="bg-white px-6 py-5 text-center">
+          {t.facts.map((f: any, i: number) => (
+            <div key={`${f.label}-${i}`} className="bg-white px-6 py-5 text-center">
               <dd className="font-display text-2xl font-semibold leading-snug text-maroon">{f.value}</dd>
               <dt className="mt-1 text-xs font-bold uppercase tracking-wider text-charcoal/70 [html[lang='ta']_&]:tracking-normal">{f.label}</dt>
             </div>
@@ -134,7 +190,7 @@ export default async function OmkaranandaPage({ params }: Params) {
         </dl>
       </div>
 
-            {/* 3. Life journey: a road with numbered stops */}
+      {/* 3. Life journey: a road with numbered stops */}
       <section aria-labelledby="life-title" className={`overflow-hidden bg-white ${sectionPad}`}>
         <div className="mx-auto max-w-5xl px-4 lg:px-8">
           <SectionTitle id="life-title" title={t.lifeTitle} />
@@ -155,10 +211,10 @@ export default async function OmkaranandaPage({ params }: Params) {
             </span>
 
             <ol className="relative">
-              {t.timeline.map((e, i) => {
+              {t.timeline.map((e: any, i: number) => {
                 const right = i % 2 === 1;
                 return (
-                  <li key={e.title} className="relative pb-12 pl-14 pt-4 last:pb-6 md:grid md:grid-cols-2 md:pl-0">
+                  <li key={`${e.title}-${i}`} className="relative pb-12 pl-14 pt-4 last:pb-6 md:grid md:grid-cols-2 md:pl-0">
                     {/* Numbered stop on the road */}
                     <span aria-hidden="true" className="absolute left-5 top-9 z-10 flex h-10 w-10 -translate-x-1/2 items-center justify-center rounded-full bg-saffron font-bold text-charcoal shadow-lg ring-4 ring-white md:left-1/2">
                       {i + 1}
@@ -198,8 +254,8 @@ export default async function OmkaranandaPage({ params }: Params) {
 
             {/* Three roles */}
             <ul className="grid gap-4">
-              {t.roles.map((r, i) => (
-                <li key={r.title}>
+              {t.roles.map((r: any, i: number) => (
+                <li key={`${r.title}-${i}`}>
                   <Reveal delay={i * 100}>
                     <article className="relative overflow-hidden rounded-2xl bg-white p-6 pl-8 shadow-md">
                       <span aria-hidden="true" className="absolute inset-y-0 left-0 w-2 bg-saffron" />
@@ -218,10 +274,10 @@ export default async function OmkaranandaPage({ params }: Params) {
               <h3 className="font-display text-2xl font-semibold text-maroon sm:text-3xl">{t.abroadTitle}</h3>
               <p className="mt-2 text-charcoal/85">{t.abroadText}</p>
               <ul className="mt-5 flex flex-wrap justify-center gap-3">
-                {t.abroad.map((c) => (
-                  <li key={c} className="inline-flex items-center gap-2 rounded-full border-2 border-saffron/60 bg-rose/50 px-5 py-2 font-semibold text-maroon">
+                {t.abroad.map((country: string, i: number) => (
+                  <li key={`${country}-${i}`} className="inline-flex items-center gap-2 rounded-full border-2 border-saffron/60 bg-rose/50 px-5 py-2 font-semibold text-maroon">
                     <Flame className="text-saffron" />
-                    {c}
+                    {country}
                   </li>
                 ))}
               </ul>

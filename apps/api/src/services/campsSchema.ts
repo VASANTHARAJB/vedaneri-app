@@ -43,17 +43,6 @@ CREATE TABLE IF NOT EXISTS camp_registrations (
   ${devoteeFk ? ', CONSTRAINT fk_campreg_devotee FOREIGN KEY (devotee_id) REFERENCES devotees (id) ON DELETE CASCADE' : ''}
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`;
 
-// Added later: full registration details
-const EXTRA_COLUMNS = [
-  'ADD COLUMN IF NOT EXISTS first_name varchar(80) DEFAULT NULL',
-  'ADD COLUMN IF NOT EXISTS last_name varchar(80) DEFAULT NULL',
-  'ADD COLUMN IF NOT EXISTS adults int(11) NOT NULL DEFAULT 1',
-  'ADD COLUMN IF NOT EXISTS children int(11) NOT NULL DEFAULT 0',
-  'ADD COLUMN IF NOT EXISTS city varchar(100) DEFAULT NULL',
-  'ADD COLUMN IF NOT EXISTS state varchar(100) DEFAULT NULL',
-  'MODIFY COLUMN phone varchar(24) DEFAULT NULL',
-];
-
 export async function ensureCampsTables(): Promise<void> {
   try {
     await pool.query(CAMPS);
@@ -63,12 +52,29 @@ export async function ensureCampsTables(): Promise<void> {
       console.warn('[Camps] Registrations table without the devotee link:', e?.message || e);
       await pool.query(REGS(false));
     }
-    await pool.query(`ALTER TABLE camp_registrations ${EXTRA_COLUMNS.join(', ')}`);
+
+    // Payment account for each camp
+    await pool.query(`ALTER TABLE camps ADD COLUMN IF NOT EXISTS pay_account enum('seva','donation') NOT NULL DEFAULT 'seva'`);
+
+    // Full registration details and payment fields
+    await pool.query(`ALTER TABLE camp_registrations
+      MODIFY COLUMN phone varchar(24) DEFAULT NULL,
+      MODIFY COLUMN status enum('PENDING','REGISTERED','CANCELLED','FAILED') NOT NULL DEFAULT 'REGISTERED',
+      ADD COLUMN IF NOT EXISTS first_name varchar(80) DEFAULT NULL,
+      ADD COLUMN IF NOT EXISTS last_name varchar(80) DEFAULT NULL,
+      ADD COLUMN IF NOT EXISTS adults int(11) NOT NULL DEFAULT 1,
+      ADD COLUMN IF NOT EXISTS children int(11) NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS city varchar(100) DEFAULT NULL,
+      ADD COLUMN IF NOT EXISTS state varchar(100) DEFAULT NULL,
+      ADD COLUMN IF NOT EXISTS amount decimal(10,2) NOT NULL DEFAULT 0.00,
+      ADD COLUMN IF NOT EXISTS payment_status enum('NONE','PENDING','PAID','FAILED') NOT NULL DEFAULT 'NONE',
+      ADD COLUMN IF NOT EXISTS razorpay_order_id varchar(64) DEFAULT NULL,
+      ADD COLUMN IF NOT EXISTS razorpay_payment_id varchar(64) DEFAULT NULL`);
+
     console.log('[Camps] Tables are ready.');
   } catch (e: any) {
     console.error('[Camps] Could not create or update the tables:', e?.message || e);
   }
 }
 
-// Runs once when the API starts
 void ensureCampsTables();

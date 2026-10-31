@@ -89,9 +89,6 @@ export default async function CampsPage({ params }: Params) {
                 {t.listLabel}
                 <Arrow />
               </a>
-              <a href={CAMP_GOOGLE_FORM} target="_blank" rel="noopener noreferrer" className="inline-flex items-center rounded-full border-2 border-white/70 px-6 py-2.5 font-semibold text-white transition-colors hover:bg-white hover:text-maroon focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
-                {t.googleCta}<span className="sr-only"> ({t.newTab})</span>
-              </a>
             </div>
           </div>
         </div>

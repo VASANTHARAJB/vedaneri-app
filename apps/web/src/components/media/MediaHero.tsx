@@ -42,6 +42,9 @@ export default function MediaHero({
   intro: string;
   stats: Stat[];
 }) {
+  // Two numbers fill two columns, three fill three (the CMS has no duration, so audio and video show two)
+  const cols = stats.length === 2 ? 'grid-cols-2 lg:w-[17.5rem]' : 'grid-cols-3 lg:w-[26rem]';
+
   return (
     <section aria-labelledby="media-title" className="relative isolate overflow-hidden bg-gradient-to-br from-maroon via-maroon to-charcoal text-white">
       <Mandala className="absolute -right-28 -top-28 -z-10 h-[34rem] w-[34rem] text-white/10" />
@@ -66,7 +69,7 @@ export default function MediaHero({
           <p className="mt-5 font-serif text-lg leading-relaxed text-white/90 sm:text-xl">{intro}</p>
         </div>
 
-        <dl className="grid grid-cols-3 gap-3 sm:gap-4 lg:w-[26rem]">
+        <dl className={`grid gap-3 sm:gap-4 ${cols}`}>
           {stats.map((s) => (
             <div key={s.label} className="rounded-xl border border-white/20 bg-white/10 px-3 py-4 text-center backdrop-blur-sm">
               <dd className="font-display text-3xl font-semibold leading-none text-white sm:text-4xl">{s.value}</dd>

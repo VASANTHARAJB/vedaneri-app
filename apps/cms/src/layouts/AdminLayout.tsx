@@ -13,9 +13,14 @@ const SLUG_TO_TAB: Record<string, NavTab> = {
   magazine: 'magazine',
   panchangam: 'panchangam',
   'page-home': 'page-home',
-  'page-about': 'page-about',
+  'about-swami': 'about-swami',
+  'about-ashramam': 'about-ashramam',
+  'about-adhishtanam': 'about-adhishtanam',
+  'about-vidyapitham': 'about-vidyapitham',
   'page-contact': 'page-contact',
-  discover: 'discover',
+  'discover-audio': 'discover-audio',
+  'discover-video': 'discover-video',
+  'discover-album': 'discover-album',
   'payments-dashboard': 'payments-dashboard',
   'seva-orders': 'payment-sevas',
   'payment-donations': 'payment-donations',
@@ -34,9 +39,14 @@ const TAB_TO_SLUG: Record<NavTab, string> = {
   magazine: 'magazine',
   panchangam: 'panchangam',
   'page-home': 'page-home',
-  'page-about': 'page-about',
+  'about-swami': 'about-swami',
+  'about-ashramam': 'about-ashramam',
+  'about-adhishtanam': 'about-adhishtanam',
+  'about-vidyapitham': 'about-vidyapitham',
   'page-contact': 'page-contact',
-  discover: 'discover',
+  'discover-audio': 'discover-audio',
+  'discover-video': 'discover-video',
+  'discover-album': 'discover-album',
   'payments-dashboard': 'payments-dashboard',
   'payment-sevas': 'seva-orders',
   'payment-donations': 'payment-donations',
@@ -55,9 +65,14 @@ const TAB_TITLES: Record<NavTab, string> = {
   magazine: 'Magazine',
   panchangam: 'Panchangam',
   'page-home': 'Home Page',
-  'page-about': 'About Page',
+  'about-swami': 'Sri Swami Omkarananda',
+  'about-ashramam': 'Ashramam',
+  'about-adhishtanam': 'Adhishtanam',
+  'about-vidyapitham': 'Vidyapitham',
   'page-contact': 'Contact Page',
-  discover: 'Discover',
+  'discover-audio': 'Audio',
+  'discover-video': 'Video',
+  'discover-album': 'Album',
   'payments-dashboard': 'Payments Dashboard',
   'payment-sevas': 'Seva Orders',
   'payment-donations': 'Donation Payments',
@@ -69,14 +84,23 @@ const TAB_TITLES: Record<NavTab, string> = {
 
 // Top-right quick action changes with the page
 function quickActionFor(tab: NavTab): { label: string; path: string } {
-  if (tab === 'donations' || tab === 'payment-donations') {
-    return { label: 'New Donation Fund', path: '/donations' };
+  switch (tab) {
+    case 'donations':
+    case 'payment-donations':
+      return { label: 'New Donation Fund', path: '/donations' };
+    case 'camps':
+      return { label: 'New Camp', path: '/camps?new=1' };
+    case 'magazine':
+      return { label: 'New Plan', path: '/magazine?new=1' };
+    case 'discover-audio':
+      return { label: 'New Audio', path: '/discover-audio?new=1' };
+    case 'discover-video':
+      return { label: 'New Video', path: '/discover-video?new=1' };
+    case 'discover-album':
+      return { label: 'New Album', path: '/discover-album?new=1' };
+    default:
+      return { label: 'New Pooja / Seva', path: '/sevas' };
   }
-  if (tab === 'camps') {
-    // ?new=1 makes the Camps page open its "New camp" form
-    return { label: 'New Camp', path: '/camps?new=1' };
-  }
-  return { label: 'New Pooja / Seva', path: '/sevas' };
 }
 
 export default function AdminLayout() {
@@ -100,6 +124,11 @@ export default function AdminLayout() {
   };
 
   const quick = quickActionFor(activeTab);
+  const crumbs = activeTab.startsWith('discover-')
+    ? ['Discover', TAB_TITLES[activeTab]]
+    : activeTab.startsWith('about-')
+      ? ['About', TAB_TITLES[activeTab]]
+      : [TAB_TITLES[activeTab] || 'Dashboard'];
 
   return (
     <div className="flex min-h-screen bg-white font-sans text-[#3b0d0d] antialiased selection:bg-[#fde7b0] selection:text-[#3b0d0d]">
@@ -112,7 +141,7 @@ export default function AdminLayout() {
 
       <div className="flex min-w-0 flex-1 flex-col">
         <TopNav
-          breadcrumbs={[TAB_TITLES[activeTab] || 'Dashboard']}
+          breadcrumbs={crumbs}
           onToggleSidebar={() => setCollapsed((c) => !c)}
           createLabel={quick.label}
           onQuickAction={() => navigate(quick.path)}
@@ -130,11 +159,7 @@ export default function AdminLayout() {
                 ? 'Vedaneri Support: admin@vedaneri.org'
                 : `Signed in as: ${user?.email || 'Unknown user'}`}
             </span>
-            <button
-              type="button"
-              onClick={() => setInfoPanel(null)}
-              className="cursor-pointer font-bold text-[#ea580c] hover:underline"
-            >
+            <button type="button" onClick={() => setInfoPanel(null)} className="cursor-pointer font-bold text-[#ea580c] hover:underline">
               Dismiss
             </button>
           </div>

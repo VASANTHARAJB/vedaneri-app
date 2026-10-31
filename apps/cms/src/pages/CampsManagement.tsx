@@ -16,16 +16,27 @@ function getToken(): string {
 const authHeader = () => ({ Authorization: `Bearer ${getToken()}` });
 
 type Status = 'draft' | 'published' | 'closed';
+type Acct = 'seva' | 'donation';
 interface Camp {
   id: string; slug: string; title_en: string; title_ta: string | null; description_en: string | null; description_ta: string | null;
   venue_en: string | null; venue_ta: string | null; start_date: string; end_date: string; start_time: string | null; end_time: string | null;
   image_url: string | null; fee_type: 'free' | 'paid'; fee_amount: number; seats: number; status: Status; registered: number;
+  pay_account?: Acct;
 }
-interface Reg { id: number; name: string; phone: string | null; email: string | null; members: number; notes: string | null; status: string; created_at: string }
+interface Reg {
+  id: number; name: string; phone: string | null; email: string | null; members: number; notes: string | null; status: string; created_at: string;
+  amount?: number | string; payment_status?: string;
+}
 
 const emptyForm = {
   title_en: '', title_ta: '', description_en: '', description_ta: '', venue_en: '', venue_ta: '',
   start_date: '', end_date: '', start_time: '', end_time: '', fee_type: 'free', fee_amount: '', seats: '0', status: 'draft' as Status,
+  pay_account: 'seva' as Acct,
+};
+
+const ACCT_LABEL: Record<Acct, string> = {
+  seva: 'Seva account (SRI DAKSHINAMURTI SEVA SAMITI)',
+  donation: 'Donation account (VEDANTA SASTHRA PRACHARA TRUST)',
 };
 
 // English field -> Tamil field that is auto-filled from it
@@ -128,7 +139,7 @@ const CSS = `
 .cm input[type=checkbox]{accent-color:var(--p);width:16px;height:16px;cursor:pointer;flex:none;}
 .cm .tblwrap{overflow-x:auto;}
 .cm .tbl{width:100%;border-collapse:collapse;min-width:900px;}
-.cm .tbl.narrow{min-width:540px;}
+.cm .tbl.narrow{min-width:640px;}
 .cm .tbl th{padding:10px 14px;text-align:left;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--mut) !important;background:#f9fafb !important;border-bottom:1px solid var(--line);white-space:nowrap;}
 .cm .tbl td{padding:12px 14px;border-bottom:1px solid #f0f1f3;vertical-align:middle;}
 .cm .tbl tr:hover td{background:#fafafa !important;}
@@ -150,6 +161,7 @@ const CSS = `
 .cm .pill.upcoming{background:#eff6ff !important;color:#1d4ed8 !important;border-color:#bfdbfe;}
 .cm .pill.ongoing{background:#dcfce7 !important;color:#166534 !important;border-color:#86efac;}
 .cm .pill.past{background:#f1f5f9 !important;color:#64748b !important;border-color:#e2e8f0;}
+.cm .pill.waiting{background:#fef3c7 !important;color:#92400e !important;border-color:#fcd34d;}
 .cm select.pill{cursor:pointer;padding:3px 8px;}
 .cm .bar{height:6px;border-radius:99px;background:#eceef1;overflow:hidden;margin-top:5px;width:110px;}
 .cm .bar i{display:block;height:100%;background:var(--p);border-radius:99px;}
@@ -326,6 +338,7 @@ export default function CampsManagement() {
       venue_en: c.venue_en || '', venue_ta: c.venue_ta || '', start_date: d10(c.start_date), end_date: d10(c.end_date),
       start_time: c.start_time || '', end_time: c.end_time || '', fee_type: c.fee_type, fee_amount: c.fee_amount ? String(c.fee_amount) : '',
       seats: String(c.seats), status: c.status,
+      pay_account: c.pay_account === 'donation' ? 'donation' : 'seva',
     });
     // Saved Tamil text is never overwritten automatically
     setTouched({ title_ta: !!c.title_ta, venue_ta: !!c.venue_ta, description_ta: !!c.description_ta });
@@ -542,6 +555,7 @@ export default function CampsManagement() {
     return regs.filter((r) => !t || `${r.name} ${r.phone || ''} ${r.email || ''}`.toLowerCase().includes(t));
   }, [regs, regQ]);
   const regPeople = regs.filter((r) => r.status === 'REGISTERED').reduce((s, r) => s + r.members, 0);
+  const regPaidTotal = regs.filter((r) => r.status === 'REGISTERED' && r.payment_status === 'PAID').reduce((s, r) => s + (Number(r.amount) || 0), 0);
 
   const statusSelect = (c: Camp) => (
     <select value={c.status} onChange={(e) => changeStatus(c, e.target.value as Status)} aria-label={`Status of ${c.title_en}`} className={`pill ${c.status}`}>
@@ -551,7 +565,7 @@ export default function CampsManagement() {
     </select>
   );
 
-  const feeText = (c: Camp) => (c.fee_type === 'paid' ? `₹${c.fee_amount}` : 'Free');
+  const feeText = (c: Camp) => (c.fee_type === 'paid' ? `₹${c.fee_amount} / person` : 'Free');
   const initial = (c: Camp) => (c.title_en || '?').trim().charAt(0).toUpperCase();
 
   // English + Tamil pair with auto-fill
@@ -580,6 +594,12 @@ export default function CampsManagement() {
         </div>
       </div>
     );
+  };
+
+  const payText = (r: Reg) => {
+    if (r.status === 'PENDING') return <span className="pill waiting">Waiting for payment</span>;
+    if (r.payment_status === 'PAID') return <span className="pill ongoing">Paid</span>;
+    return <span className="mut">-</span>;
   };
 
   return (
@@ -790,7 +810,7 @@ export default function CampsManagement() {
       {/* ===== Detail drawer ===== */}
       {detail && (
         <div className="ov" onClick={() => setDetailId(null)}>
-          <div className="drawer" style={{ maxWidth: 720 }} onClick={(e) => e.stopPropagation()}>
+          <div className="drawer" style={{ maxWidth: 820 }} onClick={(e) => e.stopPropagation()}>
             <div className="dh">
               <div style={{ minWidth: 0 }}>
                 <h2 style={{ fontSize: 18, fontWeight: 800 }}>{detail.title_en}</h2>
@@ -819,7 +839,8 @@ export default function CampsManagement() {
                     <div><dt>Time</dt><dd>{detail.start_time ? `${detail.start_time}${detail.end_time ? ` – ${detail.end_time}` : ''}` : 'Not set'}</dd></div>
                     <div><dt>Venue (English)</dt><dd>{detail.venue_en || 'Not set'}</dd></div>
                     <div><dt>Venue (தமிழ்)</dt><dd>{detail.venue_ta || 'Not set'}</dd></div>
-                    <div><dt>Fee</dt><dd>{detail.fee_type === 'paid' ? `₹${detail.fee_amount} (paid at venue)` : 'Free'}</dd></div>
+                    <div><dt>Fee</dt><dd>{detail.fee_type === 'paid' ? `₹${detail.fee_amount} per person (paid online)` : 'Free'}</dd></div>
+                    <div><dt>Payment account</dt><dd>{detail.fee_type === 'paid' ? ACCT_LABEL[detail.pay_account === 'donation' ? 'donation' : 'seva'] : 'Not needed'}</dd></div>
                     <div><dt>Seats</dt><dd>{detail.seats > 0 ? `${detail.registered} of ${detail.seats} filled` : `${detail.registered} registered (no limit)`}</dd></div>
                   </dl>
                   <div style={{ marginTop: 20 }}>
@@ -838,7 +859,10 @@ export default function CampsManagement() {
                 <>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', marginBottom: 14 }}>
                     <input value={regQ} onChange={(e) => setRegQ(e.target.value)} placeholder="Search name, mobile or email" className="inp" style={{ maxWidth: 280 }} aria-label="Search registrations" />
-                    <span className="mut">{regPeople} people in {regs.length} registration{regs.length === 1 ? '' : 's'}</span>
+                    <span className="mut">
+                      {regPeople} people in {regs.length} registration{regs.length === 1 ? '' : 's'}
+                      {detail.fee_type === 'paid' ? ` · ₹${regPaidTotal.toLocaleString('en-IN')} collected` : ''}
+                    </span>
                     <span style={{ flex: 1 }} />
                     <button type="button" className="btn primary" onClick={() => exportRegs(detail)}>Export to Excel</button>
                   </div>
@@ -855,13 +879,15 @@ export default function CampsManagement() {
                   ) : (
                     <div className="tblwrap">
                       <table className="tbl narrow">
-                        <thead><tr><th>Name</th><th>Mobile</th><th>People</th><th>Notes</th><th>Date</th></tr></thead>
+                        <thead><tr><th>Name</th><th>Mobile</th><th>People</th><th>Amount</th><th>Payment</th><th>Notes</th><th>Date</th></tr></thead>
                         <tbody>
                           {regsShown.map((r) => (
                             <tr key={r.id}>
                               <td><strong>{r.name}</strong>{r.email && <span className="mut" style={{ display: 'block', fontSize: 12 }}>{r.email}</span>}</td>
                               <td>{r.phone}</td>
                               <td>{r.members}</td>
+                              <td>{Number(r.amount) > 0 ? `₹${Number(r.amount).toLocaleString('en-IN')}` : 'Free'}</td>
+                              <td>{payText(r)}</td>
                               <td className="mut">{r.notes}</td>
                               <td className="mut" style={{ whiteSpace: 'nowrap' }}>{r.created_at ? fmtD(String(r.created_at).slice(0, 10)) : ''}</td>
                             </tr>
@@ -928,16 +954,16 @@ export default function CampsManagement() {
               </section>
 
               <section className="sec">
-                <h3 className="sech">Registration</h3>
+                <h3 className="sech">Registration and payment</h3>
                 <div className="g3">
                   <div>
                     <label className="lbl" htmlFor="c-fee">Fee</label>
                     <select id="c-fee" value={form.fee_type} onChange={(e) => set('fee_type', e.target.value)} className="inp">
-                      <option value="free">Free</option><option value="paid">Paid at venue</option>
+                      <option value="free">Free</option><option value="paid">Paid online (per person)</option>
                     </select>
                   </div>
                   <div>
-                    <label className="lbl" htmlFor="c-amt">Amount (₹)</label>
+                    <label className="lbl" htmlFor="c-amt">Amount per person (₹)</label>
                     <input id="c-amt" type="number" min="0" disabled={form.fee_type === 'free'} value={form.fee_amount} onChange={(e) => set('fee_amount', e.target.value)} className={inp('fee_amount')} />
                     {errs.fee_amount && <span role="alert" className="err">{errs.fee_amount}</span>}
                   </div>
@@ -947,6 +973,18 @@ export default function CampsManagement() {
                     {errs.seats && <span role="alert" className="err">{errs.seats}</span>}
                   </div>
                 </div>
+
+                {form.fee_type === 'paid' && (
+                  <div style={{ marginBottom: 14 }}>
+                    <label className="lbl" htmlFor="c-acct">Payment account</label>
+                    <select id="c-acct" value={form.pay_account} onChange={(e) => set('pay_account', e.target.value)} className="inp">
+                      <option value="seva">{ACCT_LABEL.seva}</option>
+                      <option value="donation">{ACCT_LABEL.donation}</option>
+                    </select>
+                    <p className="hint mut">The money goes to this Razorpay account, and its name shows in the payment window. Adults and children are both charged.</p>
+                  </div>
+                )}
+
                 <div>
                   <label className="lbl" htmlFor="c-status">Status</label>
                   <select id="c-status" value={form.status} onChange={(e) => set('status', e.target.value)} className="inp">

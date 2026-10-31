@@ -2,11 +2,12 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import AudioLibrary from '@/components/media/AudioLibrary';
 import MediaHero from '@/components/media/MediaHero';
-import { AUDIO, SERIES } from '@/data/media';
 import { getDictionary } from '@/lib/dictionary';
 import { isLocale } from '@/lib/i18n';
 
 type Params = { params: Promise<{ locale: string }> };
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
 
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { locale } = await params;
@@ -15,16 +16,31 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
   return { title: `${t.audio.meta.title} | ${t.site.name}`, description: t.audio.meta.description };
 }
 
+// Published audio from the CMS. If the API is down the page still opens, with zero counts.
+async function loadCounts() {
+  try {
+    const res = await fetch(`${API_BASE}/discover/audio`, { cache: 'no-store' });
+    if (!res.ok) throw new Error();
+    const items: { kind: 'single' | 'series'; class_count?: number }[] = (await res.json()).items || [];
+    const series = items.filter((i) => i.kind === 'series');
+    const singles = items.length - series.length;
+    const classes = series.reduce((n, s) => n + (s.class_count || 0), 0);
+    return { items: singles + classes, series: series.length };
+  } catch {
+    return { items: 0, series: 0 };
+  }
+}
+
 export default async function Page({ params }: Params) {
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
   const dict = getDictionary(locale);
   const t = dict.audio;
-  const hours = Math.round((AUDIO.reduce((s, a) => s + a.duration, 0) / 3600) * 10) / 10;
+  const c = await loadCounts();
+  // Duration is not stored in the CMS, so the "hours" figure is left out.
   const stats = [
-    { value: String(AUDIO.length), label: t.statItems },
-    { value: String(hours), label: t.statHours },
-    { value: String(SERIES.filter((s) => s.key !== 'events').length), label: t.statSeries },
+    { value: String(c.items), label: t.statItems },
+    { value: String(c.series), label: t.statSeries },
   ];
 
   return (
