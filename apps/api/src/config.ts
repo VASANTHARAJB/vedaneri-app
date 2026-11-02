@@ -1,7 +1,10 @@
 import path from 'path';
 import dotenv from 'dotenv';
 
-dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+// Tries each likely location; values already set are never overwritten
+for (const p of ['../.env', '../../.env', '../../../.env', '../../../../.env']) {
+  dotenv.config({ path: path.resolve(__dirname, p) });
+}
 
 const IS_PROD = process.env.NODE_ENV === 'production';
 

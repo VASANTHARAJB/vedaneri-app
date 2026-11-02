@@ -76,27 +76,44 @@
     "whatsapp": "WhatsApp"
   },
   "guides": {
-    "title": "Our Spiritual Guides",
-    "subtitle": "Meet the resident Acharyas sustaining the sacred traditional lineage of Vedapuri.",
-    "specLabel": "Focus",
-    "items": [
+    "title": "Our Acharyas & Spiritual Guides",
+    "subtitle": "Guided by a lineage of revered saints, scholars, and spiritual leaders",
+    "specLabel": "FOCUS",
+    "readMore": "Read Full Bio",
+    "close": "Close",
+    "lead": {
+      "name": "Swami Samananda Saraswati",
+      "role": "Chief Acharya",
+      "subTitle": "Spiritual Head & Mentor",
+      "spec": "Thayumanavar Padalgal & Vedantic Texts & Gita & Upanishads",
+      "shortBio": "Born and raised in Chennai, he traces his ancestral roots to a village near Tiruvannamalai in the erstwhile North Arcot district of Tamil Nadu. His spiritual journey took a significant turn in October 1987, when he had the opportunity to attend the spiritual programmes conducted by Swamiji. Guided by the grace of his Guru and the blessings of the Divine, he remains dedicated to preserving and sharing the timeless wisdom of Vedanta while continuing the spiritual and service-oriented mission entrusted to him.",
+      "paragraphs": [
+        "Born and raised in Chennai, he traces his ancestral roots to a village near Tiruvannamalai in the erstwhile North Arcot district of Tamil Nadu. His spiritual journey took a significant turn in October 1987, when he had the opportunity to attend the spiritual programmes conducted by Swamiji. This encounter marked the beginning of a deep and enduring association with Swamiji and his teachings.",
+        "He subsequently began attending Swamiji's Antaryoga sessions, spiritual discourses, and Vedanta classes regularly. Although he had already been studying Vedanta under another revered teacher in Chennai, Swamiji's teachings offered him a deeper understanding, clarity, and insight into the subtle aspects of Vedantic philosophy. He was fortunate to develop a close association with Swamiji, accompany him on his spiritual travels, and spend time at various places where Swamiji conducted classes and discourses. These experiences played a pivotal role in deepening his understanding of the Atma Tattva (the nature of the Self), the Upanishads, and the fundamental principles of Vedanta.",
+        "In 1992, under Swamiji's guidance, a trust was formally registered, marking the beginning of efforts to establish an ashram. Subsequently, a suitable location was identified for what would become the present-day Theni Ashram. The initial development activities commenced around 1995–96. He had the privilege of being closely involved in the formative stages of the ashram. From March 1995 to September 1998, he stayed in Theni full-time, dedicating himself to establishing the foundation and supporting the day-to-day activities of the ashram. The early development of the institution was made possible through the collective efforts and dedication of Mahatmas, sadhus, trustees, and devoted followers of Swamiji.",
+        "Between 1998 and 2004, his association with Pujya Sri Guruparananda Swamiji became another significant milestone in his spiritual journey. During Swamiji's stay in Chennai, he regularly attended his Vedanta classes, meticulously documented the teachings, and pursued systematic self-study. He had the opportunity to study several foundational Vedantic texts, including the Bhagavad Gita, the Upanishads, the Brahma Sutras, Vivekachudamani, and various Prakarana Granthas.",
+        "A particularly noteworthy aspect of his spiritual discipline was his study of the compositions of the great Tamil saint and philosopher Thayumanavar. Inspired and encouraged by Swamiji, he undertook the rigorous practice of memorising these profound verses. Over a period of approximately five to six years, he memorised 1,452 verses of Thayumanavar. The philosophical insights contained in these compositions greatly enriched his understanding of the teachings of the Bhagavad Gita and the Upanishads.",
+        "In 2005, on the auspicious occasion of Maha Shivaratri, he received Sannyasa Diksha, marking a defining moment in his spiritual life. Following this initiation, he continued to work closely with Swamiji, actively participating in the administration, development, and various spiritual activities of the Theni Ashram. His continued association provided him with the opportunity to dedicate himself further to spiritual service and institutional development.",
+        "Subsequently, he established an association with the ashram of Swami Tattvavananda in Madurai, where he also received opportunities to conduct Vedanta classes. Continuing his spiritual activities across Madurai and Theni, another opportunity arose to establish an ashram near Peraiyur. With Swamiji's guidance and blessings, a small ashram and a Shiva temple dedicated to Panchamukha Lingeshwara were established at this location.",
+        "Throughout his spiritual journey, he has been blessed with the guidance, association, and blessings of several Mahatmas, sannyasis, and revered Acharyas. His sustained study of the Bhagavad Gita, Upanishads, Brahma Sutras, and other Vedantic scriptures has also enabled him to share these profound teachings with others through systematic classes and spiritual instruction.",
+        "Today, the Theni Ashram continues to function in accordance with the spiritual vision, principles, and organisational framework established by Swamiji, with the support and cooperation of devotees and well-wishers. Spiritual education, Vedantic study, worship, and service activities continue across Theni, Madurai, and Peraiyur.",
+        "Guided by the grace of his Guru and the blessings of the Divine, he remains dedicated to preserving and sharing the timeless wisdom of Vedanta while continuing the spiritual and service-oriented mission entrusted to him."
+      ]
+    },
+    "teachers": [
       {
-        "name": "Swami Samananda Saraswati",
-        "role": "Designated Successor",
-        "text": "A disciple of Pujyasri Omkarananda Mahaswamigal, who named him as his successor. He was spiritually guided by Pujyasri Paramarthananda and Pujyasri Guruparananda, and has taught almost all major Vedantic texts in various locations. He has a special interest in teaching Thayumanavar Padalgal.",
-        "spec": "Thayumanavar Padalgal & Vedantic Texts"
+        "name": "SRI SWAMI CHIDBHAVANANDA",
+        "role": "Spiritual Luminary",
+        "image": "/images/acharya-2.jpg",
+        "spec": "Bhagavad Gita & Value-Based Education & Tapovanam",
+        "text": "Swami Chidbhavananda (1898–1985) was a renowned Indian spiritual leader, philosopher, educationist and prolific author, born in Senguttaipalayam near Pollachi, Tamil Nadu. Inspired by the teachings of Swami Vivekananda, he renounced worldly pursuits and dedicated his life to spiritual enlightenment, education and service to humanity. He founded Sri Ramakrishna Tapovanam at Thirupparaithurai in 1942 and established several educational institutions to promote value-based education and character building. A prolific writer who authored 186 books, his celebrated commentary on the Bhagavad Gita continues to inspire readers across generations. His life and teachings remain a timeless source of wisdom, discipline, compassion and spiritual inspiration."
       },
       {
-        "name": "Swami Jnanasivananda Saraswati",
-        "role": "Vedanta Teacher",
-        "text": "A close associate of Pujyasri Swami Omkarananda Mahaswamigal for nearly four decades, from whom he received Sanyasa Deeksha. Swami Omkarananda and Swami Guruparananda were his spiritual guides. He conducts regular Vedanta classes in Theni, Dindigul and other locations.",
-        "spec": "Vedanta Classes"
-      },
-      {
-        "name": "Swami Purnananda Saraswati",
-        "role": "Editor, Vedaneri Magazine",
-        "text": "A disciple of Pujyasri Omkarananda Mahaswamigal, from whom he received Sanyasa Deeksha. He completed the three-year Vedanta course conducted by Swamiji from 2000 to 2003 and is now a teacher of Vedanta, conducting classes at the ashram and other locations. For several years he has organized summer and Sunday camps for children, and he serves as editor of Vedaneri, the ashram's magazine.",
-        "spec": "Vedanta Classes & Children's Camps"
+        "name": "SRI SWAMI PARAMARTHANANDA",
+        "role": "Advaita Vedanta Scholar",
+        "image": "/images/acharya-3.jpg",
+        "spec": "Advaita Vedanta & Upanishads & Brahma Sutras",
+        "text": "Swami Paramarthananda is a renowned Indian spiritual teacher and scholar of Advaita Vedanta, widely respected for his profound knowledge and systematic interpretation of ancient Hindu scriptures. A devoted disciple of Swami Dayananda Saraswati, he has dedicated his life to teaching the timeless wisdom of the Bhagavad Gita, Upanishads and Brahma Sutras. Through his clear explanations, logical approach and extensive discourses, he has made the profound philosophy of self-knowledge accessible to countless spiritual seekers. His teachings continue to inspire individuals to discover their true nature, overcome ignorance and attain lasting peace through the wisdom of Vedanta."
       }
     ]
   },
