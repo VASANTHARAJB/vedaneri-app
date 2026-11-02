@@ -14,3 +14,5 @@ __pycache__/
 
 *.bak
 apps/api/src/**/*.js
+
+*.zip
