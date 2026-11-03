@@ -15,8 +15,8 @@ export const pool = mysql.createPool({
   // Keep connections alive and drop idle ones before the server closes them
   enableKeepAlive: true,
   keepAliveInitialDelay: 10000,
-  maxIdle: 2,
-  idleTimeout: 30000,
+  maxIdle: 10,
+  idleTimeout: 600000,
 });
 
 // Run a query and retry once if the connection was reset by the server

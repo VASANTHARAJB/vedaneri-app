@@ -9,6 +9,28 @@ import SectionTitle from './SectionTitle';
 
 const FALLBACK = 'linear-gradient(180deg, #F3E4E1 0%, #7A1C1C 100%)';
 const FACE = '50% 12%';
+const LEAD_FACE = '50% 8%';
+
+// English fallbacks, used only if the dictionary keys are missing
+const DEFAULT_GUIDES_TITLE = 'The Spiritual Guide of Pujyasri Swami Omkarananda Mahaswamigal';
+const DEFAULT_CHIEF_TITLE = 'Chief Acharya Of Sri Swami Chidbhavananda Ashramam';
+const DEFAULT_DAYANANDA_NAME = 'Pujya Sri Swami Dayananda Saraswati';
+
+const DAYANANDA_IMAGE = '/images/acharya-4.jpg';
+
+type Guide = {
+  name: string;
+  role?: string;
+  image: string;
+  text: string;
+  spec?: string;
+};
+
+type ExtraKeys = {
+  guidesTitle?: string;
+  chiefTitle?: string;
+  dayananda?: { name?: string; role?: string; spec?: string; text?: string };
+};
 
 const tags = (spec: string) => (spec ? spec.split(/\s*&\s*/).filter(Boolean) : []);
 
@@ -25,6 +47,7 @@ function Mandala({ className = '' }: { className?: string }) {
 }
 
 function Tags({ spec, label, center = false }: { spec: string; label: string; center?: boolean }) {
+  if (!spec) return null;
   return (
     <div>
       <p className="text-xs font-bold uppercase tracking-wider text-charcoal/70 [html[lang='ta']_&]:tracking-normal">{label}</p>
@@ -62,18 +85,36 @@ export default function Guides({ t }: { locale?: Locale; t: Dictionary['guides']
     };
   }, [isOpen]);
 
-  // Read translated dynamic data directly from t
+  const extra = t as unknown as ExtraKeys;
+  const guidesTitle = extra.guidesTitle || DEFAULT_GUIDES_TITLE;
+  const chiefTitle = extra.chiefTitle || DEFAULT_CHIEF_TITLE;
+
   const chiefAcharya = t.lead;
-  const teachers = t.teachers || [];
+  const dictTeachers = ((t.teachers || []) as unknown as Guide[]);
+
+  const dayananda: Guide = {
+    name: extra.dayananda?.name || DEFAULT_DAYANANDA_NAME,
+    role: extra.dayananda?.role || '',
+    image: DAYANANDA_IMAGE,
+    text: extra.dayananda?.text || '',
+    spec: extra.dayananda?.spec || '',
+  };
+
+  // Order: 1st dictionary card, Dayananda, then the remaining dictionary cards
+  const guides: Guide[] =
+    dictTeachers.length > 0
+      ? [dictTeachers[0], dayananda, ...dictTeachers.slice(1)]
+      : [dayananda];
 
   return (
     <section aria-labelledby="guides-title" className="relative isolate overflow-hidden bg-gradient-to-b from-white to-rose/60 py-16 sm:py-20">
       <div className="mx-auto max-w-6xl px-4 lg:px-8">
-        <SectionTitle id="guides-title" title={t.title} subtitle={t.subtitle} />
+        {/* Row 1 title */}
+        <SectionTitle id="guides-title" title={guidesTitle} subtitle={t.subtitle} />
 
-        {/* 1. Upper: Two Cards Side by Side */}
-        <ul className="mt-10 grid gap-6 md:grid-cols-2">
-          {teachers.map((a, idx) => (
+        {/* Row 1: three cards */}
+        <ul className="mt-10 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {guides.map((a, idx) => (
             <li key={a.name} className="flex">
               <Reveal delay={idx * 120} className="flex w-full">
                 <article className="group/card flex w-full flex-col overflow-hidden rounded-2xl bg-white text-center shadow-lg ring-1 ring-rose">
@@ -92,14 +133,18 @@ export default function Guides({ t }: { locale?: Locale; t: Dictionary['guides']
                   </div>
 
                   <div className="flex flex-1 flex-col px-6 pb-8 pt-4">
-                    <span className="mx-auto inline-block rounded-full bg-saffron px-3 py-1 text-xs font-bold uppercase tracking-wider text-charcoal [html[lang='ta']_&]:tracking-normal">
-                      {a.role}
-                    </span>
+                    {a.role && (
+                      <span className="mx-auto inline-block rounded-full bg-saffron px-3 py-1 text-xs font-bold uppercase tracking-wider text-charcoal [html[lang='ta']_&]:tracking-normal">
+                        {a.role}
+                      </span>
+                    )}
                     <h3 className="mt-3 font-display text-2xl font-semibold leading-snug text-maroon">{a.name}</h3>
                     <p className="mt-3 text-justify font-serif text-[0.95rem] leading-relaxed text-charcoal/85 hyphens-auto">{a.text}</p>
-                    <div className="mt-auto pt-6">
-                      <Tags spec={a.spec} label={t.specLabel || 'FOCUS'} center />
-                    </div>
+                    {a.spec && (
+                      <div className="mt-auto pt-6">
+                        <Tags spec={a.spec} label={t.specLabel || 'FOCUS'} center />
+                      </div>
+                    )}
                   </div>
                 </article>
               </Reveal>
@@ -107,76 +152,95 @@ export default function Guides({ t }: { locale?: Locale; t: Dictionary['guides']
           ))}
         </ul>
 
-        {/* 2. Below: Single Wide Lead Card */}
+        {/* Row 2: title + single wide card */}
         {chiefAcharya && (
-          <Reveal delay={240} className="mt-10">
-            <article className="group/lead grid overflow-hidden rounded-[2rem] bg-white shadow-xl ring-1 ring-rose lg:grid-cols-[300px_1fr]">
-              <div className="relative isolate flex items-center justify-center overflow-hidden bg-maroon px-6 py-8">
-                <Mandala className="absolute -left-20 -top-20 -z-10 h-72 w-72 text-white/[0.08]" />
-                <div aria-hidden="true" className="absolute -bottom-10 left-1/2 -z-10 h-60 w-60 -translate-x-1/2 rounded-full bg-saffron/40 blur-3xl" />
+          <>
+            <Reveal delay={200} className="mt-16">
+              <div className="text-center">
+                <h2 id="chief-acharya-title" className="font-display text-3xl font-semibold leading-snug text-maroon sm:text-4xl">
+                  {chiefTitle}
+                </h2>
+                <div aria-hidden="true" className="mt-3 flex items-center justify-center gap-3">
+                  <span className="h-px w-10 bg-saffron" />
+                  <span className="h-2 w-2 rotate-45 bg-saffron" />
+                  <span className="h-px w-10 bg-saffron" />
+                </div>
+              </div>
+            </Reveal>
 
-                <div className="flex w-full max-w-[220px] flex-col rounded-t-[9999px] border-2 border-b-0 border-saffron/40 p-2 pb-0">
-                  <div className="flex flex-1 flex-col rounded-t-[9999px] border-2 border-b-0 border-saffron/80 p-2 pb-0">
-                    <div className="h-64 overflow-hidden rounded-t-[9999px] bg-rose">
-                      <div
-                        role="img"
-                        aria-label={chiefAcharya.name}
-                        className="h-full w-full bg-cover transition-transform duration-700 ease-out group-hover/lead:scale-105 motion-reduce:transition-none"
-                        style={{ backgroundImage: `url('/images/acharya-1.jpg'), ${FALLBACK}`, backgroundPosition: FACE }}
-                      />
+            <Reveal delay={240} className="mt-8">
+              <article
+                aria-labelledby="chief-acharya-title"
+                className="group/lead grid overflow-hidden rounded-[2rem] bg-white shadow-xl ring-1 ring-rose lg:grid-cols-[300px_1fr]"
+              >
+                {/* Photo panel: fixed portrait arch anchored to the bottom */}
+                <div className="relative isolate flex items-end justify-center overflow-hidden bg-maroon px-6 pt-10">
+                  <Mandala className="absolute -left-20 -top-20 -z-10 h-72 w-72 text-white/[0.08]" />
+                  <div aria-hidden="true" className="absolute -bottom-10 left-1/2 -z-10 h-60 w-60 -translate-x-1/2 rounded-full bg-saffron/40 blur-3xl" />
+
+                  <div className="flex w-full max-w-[260px] flex-col rounded-t-[9999px] border-2 border-b-0 border-saffron/40 p-2 pb-0">
+                    <div className="flex flex-col rounded-t-[9999px] border-2 border-b-0 border-saffron/80 p-2 pb-0">
+                      <div className="relative aspect-[3/4] overflow-hidden rounded-t-[9999px] bg-rose">
+                        <div
+                          role="img"
+                          aria-label={chiefAcharya.name}
+                          className="absolute inset-0 bg-cover transition-transform duration-700 ease-out group-hover/lead:scale-105 motion-reduce:transition-none"
+                          style={{ backgroundImage: `url('/images/acharya-1.jpg'), ${FALLBACK}`, backgroundPosition: LEAD_FACE }}
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="flex flex-col justify-center p-6 text-left sm:p-8">
-                <div>
-                  <span className="inline-block rounded-full border border-maroon px-3 py-0.5 text-xs font-bold uppercase tracking-wider text-maroon [html[lang='ta']_&]:tracking-normal">
-                    {chiefAcharya.role}
-                  </span>
-                </div>
+                <div className="flex flex-col justify-center p-6 text-left sm:p-8">
+                  <div>
+                    <span className="inline-block rounded-full border border-maroon px-3 py-0.5 text-xs font-bold uppercase tracking-wider text-maroon [html[lang='ta']_&]:tracking-normal">
+                      {chiefAcharya.role}
+                    </span>
+                  </div>
 
-                <p className="mt-3 text-xs font-bold uppercase tracking-widest text-charcoal/70 [html[lang='ta']_&]:tracking-normal">
-                  {chiefAcharya.subTitle}
-                </p>
+                  <p className="mt-3 text-xs font-bold uppercase tracking-widest text-charcoal/70 [html[lang='ta']_&]:tracking-normal">
+                    {chiefAcharya.subTitle}
+                  </p>
 
-                <h3 className="mt-1 font-display text-3xl font-semibold leading-tight text-maroon sm:text-4xl">
-                  {chiefAcharya.name}
-                </h3>
+                  <h3 className="mt-1 font-display text-3xl font-semibold leading-tight text-maroon sm:text-4xl">
+                    {chiefAcharya.name}
+                  </h3>
 
-                <div aria-hidden="true" className="mt-3 flex items-center gap-3">
-                  <span className="h-px w-10 bg-saffron" />
-                  <span className="h-1.5 w-1.5 rotate-45 bg-saffron" />
-                  <span className="h-px w-10 bg-saffron" />
-                </div>
+                  <div aria-hidden="true" className="mt-3 flex items-center gap-3">
+                    <span className="h-px w-10 bg-saffron" />
+                    <span className="h-1.5 w-1.5 rotate-45 bg-saffron" />
+                    <span className="h-px w-10 bg-saffron" />
+                  </div>
 
-                <p className="mt-4 text-justify font-serif text-base leading-relaxed text-charcoal/90 hyphens-auto sm:text-lg">
-                  {chiefAcharya.shortBio}
-                </p>
+                  <p className="mt-4 text-justify font-serif text-base leading-relaxed text-charcoal/90 hyphens-auto sm:text-lg">
+                    {chiefAcharya.shortBio}
+                  </p>
 
-                <div className="mt-6 flex flex-wrap items-center justify-between gap-4">
-                  <button
-                    type="button"
-                    onClick={() => setIsOpen(true)}
-                    className="inline-flex items-center gap-2 rounded-full bg-maroon px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-md transition hover:bg-maroon/90 focus:outline-none focus:ring-2 focus:ring-saffron"
-                  >
-                    {t.readMore || 'Read Full Bio'}
-                    <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd" />
-                    </svg>
-                  </button>
+                  <div className="mt-6 flex flex-wrap items-center justify-between gap-4">
+                    <button
+                      type="button"
+                      onClick={() => setIsOpen(true)}
+                      className="inline-flex items-center gap-2 rounded-full bg-maroon px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-md transition hover:bg-maroon/90 focus:outline-none focus:ring-2 focus:ring-saffron"
+                    >
+                      {t.readMore || 'Read Full Bio'}
+                      <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd" />
+                      </svg>
+                    </button>
 
-                  <div className="w-full sm:w-auto">
-                    <Tags spec={chiefAcharya.spec} label={t.specLabel || 'FOCUS'} />
+                    <div className="w-full sm:w-auto">
+                      <Tags spec={chiefAcharya.spec} label={t.specLabel || 'FOCUS'} />
+                    </div>
                   </div>
                 </div>
-              </div>
-            </article>
-          </Reveal>
+              </article>
+            </Reveal>
+          </>
         )}
       </div>
 
-      {/* 3. Global Modal Portal */}
+      {/* Global Modal Portal */}
       {mounted && isOpen && chiefAcharya && createPortal(
         <div
           role="dialog"

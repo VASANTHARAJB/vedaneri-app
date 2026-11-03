@@ -1,7 +1,7 @@
 // Contact details used in the footer and the audio bar. An empty value is simply not shown.
 export const SITE = {
-  phones: ['+91 4546 252255'] as string[],
-  email: 'contact@vedaneri.org',
+  phones: ['97517 51910', '94430 51910'],
+  email: 'swamiomkarananda@gmail.com',
   youtube: '',    // full URL of the YouTube channel
   whatsapp: '',   // full URL, e.g. 'https://wa.me/919876543210'
 };

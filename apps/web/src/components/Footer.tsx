@@ -4,35 +4,29 @@ import type { Dictionary } from '@/lib/dictionary';
 import { SITE } from '@/lib/site';
 import LogoBadge from './LogoBadge';
 
-type TrustItem = {
-  name: string;
-  short: string;
-  reg: string;
-};
-
-// Extends Dictionary['footer'] with optional keys so TypeScript compiles cleanly
 type Props = {
   locale: Locale;
   t: Dictionary['footer'] & {
-    trustItems?: TrustItem[];
     contactTitle?: string;
   };
 };
 
-const LOGOS = ['/images/logo-vspt.png', '/images/logo-sdss.png'];
+const ASHRAM_NAME = 'SRI SWAMI CHIDBHAVANANDA ASHRAMAM';
 
-const DEFAULT_TRUSTS: [TrustItem, TrustItem] = [
+const TRUSTS = [
   {
-    name: 'Vedaneri Sri Panpattu Trust',
+    logo: '/images/logo-vspt.png',
+    name: 'VEDANTA SASTHRA PRACHARA TRUST',
     short: 'VSPT',
-    reg: 'Reg. Trust',
+    reg: 'Reg.No: 226/1992',
   },
   {
-    name: 'Sri Dakshinamurthy Seva Samithi',
+    logo: '/images/logo-sdss.png',
+    name: 'SRI DAKSHINAMURTI SEVA SAMITI',
     short: 'SDSS',
-    reg: 'Reg. Society',
+    reg: 'Reg.No: 500/2002',
   },
-];
+] as const;
 
 const linkClass =
   'text-white/85 underline-offset-4 transition-colors hover:text-white hover:underline hover:decoration-saffron hover:decoration-2';
@@ -41,10 +35,7 @@ const social =
 
 export default function Footer({ locale, t }: Props) {
   const year = new Date().getFullYear();
-
-  // Fallback to DEFAULT_TRUSTS if trustItems is missing in the dictionary
-  const left = t.trustItems?.[0] ?? DEFAULT_TRUSTS[0];
-  const right = t.trustItems?.[1] ?? DEFAULT_TRUSTS[1];
+  const [left, right] = TRUSTS;
   const contactTitle = t.contactTitle ?? (locale === 'ta' ? 'தொடர்புக்கு' : 'Contact Us');
 
   return (
@@ -63,31 +54,34 @@ export default function Footer({ locale, t }: Props) {
                 <path d="M12 2c.6 3.2 4.5 5.4 4.5 10a4.5 4.5 0 0 1-9 0c0-2 .9-3.2 1.8-4.4.4 1.2 1 1.8 1.7 2C11.3 7.7 11.6 5 12 2z" />
               </svg>
             </span>
-            <p className="mt-3 font-display text-3xl font-semibold text-white sm:text-4xl">{t.name}</p>
+            <p className="mt-3 font-display text-2xl font-semibold tracking-wide text-white sm:text-3xl">
+              {ASHRAM_NAME}
+            </p>
             <div aria-hidden="true" className="mt-3 flex items-center justify-center gap-3">
               <span className="h-px w-10 bg-saffron" />
               <span className="h-2 w-2 rotate-45 bg-saffron" />
               <span className="h-px w-10 bg-saffron" />
             </div>
-            <p className="mt-3 text-sm font-semibold uppercase tracking-[0.25em] text-rose [html[lang='ta']_&]:tracking-normal">
-              {t.motto}
-            </p>
           </div>
 
-          {/* Left logo */}
-          <div className="order-none flex flex-col items-center gap-4 text-center lg:order-first lg:flex-row lg:text-left">
-            <LogoBadge src={LOGOS[0]} alt={left.name} initials={left.short} />
-            <div>
-              <p className="font-semibold uppercase tracking-wide text-white">{left.name}</p>
+          {/* Left trust: logo on top, name below */}
+          <div className="order-none flex flex-col items-center gap-3 text-center lg:order-first">
+            <LogoBadge src={left.logo} alt={left.name} initials={left.short} />
+            <div className="max-w-xs">
+              <p className="text-sm font-semibold uppercase leading-snug tracking-wide text-white sm:text-base">
+                {left.name}
+              </p>
               <p className="mt-1 text-sm text-white/70">{left.reg}</p>
             </div>
           </div>
 
-          {/* Right logo */}
-          <div className="flex flex-col items-center gap-4 text-center lg:flex-row-reverse lg:text-right">
-            <LogoBadge src={LOGOS[1]} alt={right.name} initials={right.short} />
-            <div>
-              <p className="font-semibold uppercase tracking-wide text-white">{right.name}</p>
+          {/* Right trust: logo on top, name below */}
+          <div className="flex flex-col items-center gap-3 text-center">
+            <LogoBadge src={right.logo} alt={right.name} initials={right.short} />
+            <div className="max-w-xs">
+              <p className="text-sm font-semibold uppercase leading-snug tracking-wide text-white sm:text-base">
+                {right.name}
+              </p>
               <p className="mt-1 text-sm text-white/70">{right.reg}</p>
             </div>
           </div>
@@ -197,7 +191,10 @@ export default function Footer({ locale, t }: Props) {
               </svg>
               <h2 className="font-display !text-xl !leading-snug font-semibold text-rose">{t.taxTitle}</h2>
             </div>
-            <p className="mt-3 text-white/85">{t.tax}</p>
+            <p className="mt-3 font-semibold uppercase tracking-wide text-white">
+              {left.name} ({left.reg})
+            </p>
+            <p className="mt-2 text-white/85">{t.tax}</p>
           </div>
         </div>
       </div>
