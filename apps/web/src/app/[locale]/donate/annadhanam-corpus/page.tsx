@@ -6,7 +6,10 @@ import type { DonationFund } from '@/type/donation';
 import { getDictionary } from '@/lib/dictionary';
 import { isLocale } from '@/lib/i18n';
 
-type Params = { params: Promise<{ locale: string }> };
+type Params = {
+  params: Promise<{ locale: string }>;
+  searchParams?: Promise<{ view?: string | string[] }>;
+};
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
 
@@ -36,7 +39,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
     description:
       locale === 'ta'
         ? 'ஸ்ரீ தட்சிணாமூர்த்தி சேவா சமிதி நன்கொடை மற்றும் மூலதன நிதி திருப்பணிகள்.'
-        : 'Donation and corpus funds supporting Sri Dakshinamurti Seva Samiti.',
+        : 'Donation and corpus funds supporting Vedanta sasthra prachara trust.',
   };
 }
 
@@ -59,7 +62,7 @@ function Arrow() {
   );
 }
 
-export default async function DonationsPage({ params }: Params) {
+export default async function DonationsPage({ params, searchParams }: Params) {
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
   const dict = getDictionary(locale);
@@ -67,6 +70,19 @@ export default async function DonationsPage({ params }: Params) {
   const href = (p: string) => `/${locale}${p}`;
 
   const { funds, failed } = await getFunds();
+
+  // The open tab: what the banner button asked for, otherwise Donation List, or Corpus Fund when there are no donations
+  const sp = (await searchParams) || {};
+  const rawView = Array.isArray(sp.view) ? sp.view[0] : sp.view;
+  const donationCount = funds.filter((f) => f.category === 'donation').length;
+  const view: 'donation' | 'corpus' =
+    rawView === 'corpus' ? 'corpus' : rawView === 'donation' ? 'donation' : donationCount > 0 ? 'donation' : 'corpus';
+  const donationLabel = isTa ? 'நன்கொடை பட்டியல்' : 'Donation List';
+  const corpusLabel = isTa ? 'மூலதன நிதி' : 'Corpus Fund';
+  const btnBase =
+    'group inline-flex items-center gap-2 rounded-full px-6 py-2.5 font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white';
+  const btnOn = 'bg-saffron text-charcoal hover:bg-white';
+  const btnOff = 'border-2 border-white/70 text-white hover:bg-white hover:text-maroon';
 
   return (
     <main>
@@ -91,7 +107,7 @@ export default async function DonationsPage({ params }: Params) {
           <div className="mx-auto w-full min-w-0 max-w-2xl text-center lg:mx-0 lg:max-w-[40rem] lg:text-left">
             <p className="inline-flex max-w-full items-center gap-2 rounded-full border border-saffron/70 bg-charcoal/50 px-4 py-1.5 text-sm font-semibold text-white backdrop-blur-sm sm:text-base">
               <Flame className="text-saffron" />
-              <span>{isTa ? 'ஸ்ரீ தட்சிணாமூர்த்தி சேவா சமிதி' : 'Sri Dakshinamurti Seva Samiti'}</span>
+              <span>{isTa ? 'வேதாந்த சாஸ்திர பிரசார டிரஸ்ட்' : 'Vedanta sasthra prachara trust'}</span>
             </p>
             <h1 id="donations-title" className="animate-fade-up mt-5 font-display text-5xl font-semibold leading-[1.1] !text-white drop-shadow-[0_2px_14px_rgba(0,0,0,0.6)] motion-reduce:animate-none sm:text-6xl lg:text-7xl [html[lang='ta']_&]:!leading-[1.3] [html[lang='ta']_&]:text-4xl [html[lang='ta']_&]:sm:text-5xl [html[lang='ta']_&]:lg:text-6xl">
               {isTa ? 'நன்கொடைகள் & மூலதன நிதி' : 'Donations & Corpus Funds'}
@@ -107,13 +123,25 @@ export default async function DonationsPage({ params }: Params) {
                 : 'Contribute to the ashram’s activities and to permanent corpus funds that serve future generations.'}
             </p>
 
-            <div className="mt-8 flex flex-wrap justify-center gap-3 lg:justify-start">
-              <a href="#donation-list" className="group inline-flex items-center gap-2 rounded-full bg-saffron px-6 py-2.5 font-semibold text-charcoal transition-colors hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
-                {isTa ? 'நிதிகள் பட்டியல்' : 'View Funds'}
+            {/* Two buttons: each one opens its own tab below */}
+            <div className="mt-8 flex flex-wrap justify-center gap-3 lg:justify-start" role="group" aria-label={isTa ? 'வகை' : 'Category'}>
+              <Link
+                href={`${href('/donate/annadhanam-corpus')}#donation-list`}
+                scroll
+                aria-current={view === 'donation' ? 'true' : undefined}
+                className={`${btnBase} ${view === 'donation' ? btnOn : btnOff}`}
+              >
+                {donationLabel}
                 <Arrow />
-              </a>
-              <Link href={href('/cart')} className="inline-flex items-center rounded-full border-2 border-white/70 px-6 py-2.5 font-semibold text-white transition-colors hover:bg-white hover:text-maroon focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
-                {dict.shop.cartTitle}
+              </Link>
+              <Link
+                href={`${href('/donate/annadhanam-corpus')}?view=corpus#donation-list`}
+                scroll
+                aria-current={view === 'corpus' ? 'true' : undefined}
+                className={`${btnBase} ${view === 'corpus' ? btnOn : btnOff}`}
+              >
+                {corpusLabel}
+                <Arrow />
               </Link>
             </div>
           </div>
@@ -125,7 +153,7 @@ export default async function DonationsPage({ params }: Params) {
       </section>
 
       {/* 2. Donation funds (live from the database) */}
-      <section id="donation-list" aria-label={isTa ? 'நிதிகள் பட்டியல்' : 'Donation funds'} className="bg-white pb-16 pt-6 sm:pb-20 scroll-mt-10">
+      <section id="donation-list" aria-label={view === 'corpus' ? corpusLabel : donationLabel} className="bg-white pb-16 pt-6 sm:pb-20 scroll-mt-10">
         <div className="mx-auto max-w-7xl px-4 lg:px-8">
           {failed ? (
             <div className="rounded-md border border-sand bg-white py-16 text-center">
@@ -136,7 +164,7 @@ export default async function DonationsPage({ params }: Params) {
               </p>
             </div>
           ) : (
-            <DonationList locale={locale} initialFunds={funds} detailBase="/donate" />
+            <DonationList key={view} locale={locale} initialFunds={funds} detailBase="/donate" initialCategory={view} />
           )}
         </div>
       </section>

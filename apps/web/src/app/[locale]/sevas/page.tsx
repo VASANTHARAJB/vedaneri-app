@@ -5,7 +5,10 @@ import SevaList from '@/components/SevaList';
 import { getDictionary } from '@/lib/dictionary';
 import { isLocale } from '@/lib/i18n';
 
-type Params = { params: Promise<{ locale: string }> };
+type Params = {
+  params: Promise<{ locale: string }>;
+  searchParams?: Promise<{ view?: string | string[] }>;
+};
 
 export interface Offering {
   id: string | number;
@@ -74,15 +77,31 @@ function Arrow() {
   );
 }
 
-export default async function SevasPage({ params }: Params) {
+export default async function SevasPage({ params, searchParams }: Params) {
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
   const dict = getDictionary(locale);
   const t = dict.sevas;
   const href = (p: string) => `/${locale}${p}`;
 
+  // Which list to show: sevas (default) or corpus funds, chosen by the two hero buttons
+  const sp = (await searchParams) || {};
+  const rawView = Array.isArray(sp.view) ? sp.view[0] : sp.view;
+  const sevaLabel = locale === 'ta' ? 'சேவை பட்டியல்' : 'Seva List';
+  const corpusLabel = locale === 'ta' ? 'மூலதன நிதி' : 'Corpus Fund';
+
   // Direct Database Fetch
   const liveOfferings = await getLiveOfferings();
+
+  // The open tab: what the banner button asked for, otherwise Seva List, or Corpus Fund when there are no sevas
+  const sevaCount = liveOfferings.filter((o) => o.category !== 'corpus').length;
+  const view: 'seva' | 'corpus' =
+    rawView === 'corpus' ? 'corpus' : rawView === 'seva' ? 'seva' : sevaCount > 0 ? 'seva' : 'corpus';
+
+  const btnBase =
+    'group inline-flex items-center gap-2 rounded-full px-6 py-2.5 font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white';
+  const btnOn = 'bg-saffron text-charcoal hover:bg-white';
+  const btnOff = 'border-2 border-white/70 text-white hover:bg-white hover:text-maroon';
 
   return (
     <main>
@@ -121,13 +140,25 @@ export default async function SevasPage({ params }: Params) {
               {t.intro}
             </p>
 
-            <div className="mt-8 flex flex-wrap justify-center gap-3 lg:justify-start">
-              <a href="#seva-list" className="group inline-flex items-center gap-2 rounded-full bg-saffron px-6 py-2.5 font-semibold text-charcoal transition-colors hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
-                {t.listLabel}
+            {/* Two buttons: each one opens its own tab below */}
+            <div className="mt-8 flex flex-wrap justify-center gap-3 lg:justify-start" role="group" aria-label={locale === 'ta' ? 'வகை' : 'Category'}>
+              <Link
+                href={`${href('/sevas')}#seva-list`}
+                scroll
+                aria-current={view === 'seva' ? 'true' : undefined}
+                className={`${btnBase} ${view === 'seva' ? btnOn : btnOff}`}
+              >
+                {sevaLabel}
                 <Arrow />
-              </a>
-              <Link href={href('/cart')} className="inline-flex items-center rounded-full border-2 border-white/70 px-6 py-2.5 font-semibold text-white transition-colors hover:bg-white hover:text-maroon focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
-                {dict.shop.cartTitle}
+              </Link>
+              <Link
+                href={`${href('/sevas')}?view=corpus#seva-list`}
+                scroll
+                aria-current={view === 'corpus' ? 'true' : undefined}
+                className={`${btnBase} ${view === 'corpus' ? btnOn : btnOff}`}
+              >
+                {corpusLabel}
+                <Arrow />
               </Link>
             </div>
           </div>
@@ -138,10 +169,10 @@ export default async function SevasPage({ params }: Params) {
         </svg>
       </section>
 
-      {/* 2. Seva list: Live Database Offerings */}
-      <section id="seva-list" aria-label={t.listLabel} className="bg-white pb-16 pt-6 sm:pb-20 scroll-mt-10">
+      {/* 2. Seva List / Corpus Fund tabs: Live Database Offerings */}
+      <section id="seva-list" aria-label={view === 'corpus' ? corpusLabel : sevaLabel} className="bg-white pb-16 pt-6 sm:pb-20 scroll-mt-10">
         <div className="mx-auto max-w-7xl px-4 lg:px-8">
-          <SevaList t={t} locale={locale} initialOfferings={liveOfferings} />
+          <SevaList key={view} t={t} locale={locale} initialOfferings={liveOfferings} initialCategory={view} />
         </div>
       </section>
 

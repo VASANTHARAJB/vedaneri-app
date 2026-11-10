@@ -8,9 +8,11 @@ interface SevaListProps {
   t: any;
   locale: string;
   initialOfferings?: Offering[];
+  // Which tab is open first (set by the Seva list / Corpus buttons in the page banner)
+  initialCategory?: 'seva' | 'corpus';
 }
 
-type CategoryFilter = 'all' | 'seva' | 'corpus';
+type CategoryFilter = 'seva' | 'corpus';
 
 function getImageUrl(url?: string): string {
   if (!url) return '';
@@ -24,26 +26,23 @@ function getImageUrl(url?: string): string {
   return `${backendOrigin}${cleanPath}`;
 }
 
-export default function SevaList({ locale, initialOfferings = [] }: SevaListProps) {
-  const [selectedCategory, setSelectedCategory] = useState<CategoryFilter>('all');
+export default function SevaList({ locale, initialOfferings = [], initialCategory }: SevaListProps) {
+  const [selectedCategory, setSelectedCategory] = useState<CategoryFilter>(initialCategory || 'seva');
   const isTa = locale === 'ta';
 
   const counts = useMemo(
     () => ({
-      all: initialOfferings.length,
-      seva: initialOfferings.filter((i) => i.category === 'seva').length,
+      seva: initialOfferings.filter((i) => i.category !== 'corpus').length,
       corpus: initialOfferings.filter((i) => i.category === 'corpus').length,
     }),
     [initialOfferings]
   );
 
   const filteredOfferings = initialOfferings.filter((item) => {
-    if (selectedCategory === 'all') return true;
-    return item.category === selectedCategory;
+    return selectedCategory === 'corpus' ? item.category === 'corpus' : item.category !== 'corpus';
   });
 
   const tabs: { key: CategoryFilter; label: string }[] = [
-    { key: 'all', label: isTa ? 'அனைத்தும்' : 'All Offerings' },
     { key: 'seva', label: isTa ? 'சேவை பட்டியல்' : 'Seva List' },
     { key: 'corpus', label: isTa ? 'மூலதன நிதி' : 'Corpus Fund' },
   ];

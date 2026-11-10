@@ -36,7 +36,7 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
     description:
       locale === 'ta'
         ? 'ஆசிரம பராமரிப்பு மற்றும் திருப்பணிகளுக்கான நன்கொடைகள்.'
-        : 'Donations for ashram maintenance and projects of Sri Dakshinamurti Seva Samiti.',
+        : 'Donations for ashram maintenance and projects of Vedanta sasthra prachara trust.',
   };
 }
 
@@ -91,7 +91,7 @@ export default async function AshramDonationPage({ params }: Params) {
           <div className="mx-auto w-full min-w-0 max-w-2xl text-center lg:mx-0 lg:max-w-[40rem] lg:text-left">
             <p className="inline-flex max-w-full items-center gap-2 rounded-full border border-saffron/70 bg-charcoal/50 px-4 py-1.5 text-sm font-semibold text-white backdrop-blur-sm sm:text-base">
               <Flame className="text-saffron" />
-              <span>{isTa ? 'ஸ்ரீ தட்சிணாமூர்த்தி சேவா சமிதி' : 'Sri Dakshinamurti Seva Samiti'}</span>
+              <span>{isTa ? 'வேதாந்த சாஸ்திர பிரசார டிரஸ்ட்' : 'Vedanta sasthra prachara trust'}</span>
             </p>
             <h1 id="ashram-title" className="animate-fade-up mt-5 font-display text-5xl font-semibold leading-[1.1] !text-white drop-shadow-[0_2px_14px_rgba(0,0,0,0.6)] motion-reduce:animate-none sm:text-6xl lg:text-7xl [html[lang='ta']_&]:!leading-[1.3] [html[lang='ta']_&]:text-4xl [html[lang='ta']_&]:sm:text-5xl [html[lang='ta']_&]:lg:text-6xl">
               {isTa ? 'ஆசிரம நன்கொடைகள்' : 'Ashram Donations'}

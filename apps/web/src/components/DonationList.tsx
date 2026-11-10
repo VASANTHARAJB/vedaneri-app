@@ -11,9 +11,11 @@ interface Props {
   showTabs?: boolean;
   // Route (without locale) where the fund detail page lives, e.g. "/donate"
   detailBase?: string;
+  // Which tab is open first (set by the Donation List / Corpus Fund buttons in the page banner)
+  initialCategory?: 'donation' | 'corpus';
 }
 
-type Filter = 'all' | 'donation' | 'corpus';
+type Filter = 'donation' | 'corpus';
 
 function getImageUrl(url?: string): string {
   if (!url) return '';
@@ -22,24 +24,22 @@ function getImageUrl(url?: string): string {
   return `${origin}${url.startsWith('/') ? url : `/${url}`}`;
 }
 
-export default function DonationList({ locale, initialFunds = [], showTabs = true, detailBase = '/donate' }: Props) {
+export default function DonationList({ locale, initialFunds = [], showTabs = true, detailBase = '/donate', initialCategory }: Props) {
   const isTa = locale === 'ta';
-  const [filter, setFilter] = useState<Filter>('all');
+  const [filter, setFilter] = useState<Filter>(initialCategory || 'donation');
   const base = `/${locale}${detailBase.startsWith('/') ? detailBase : `/${detailBase}`}`.replace(/\/+$/, '');
 
   const counts = useMemo(
     () => ({
-      all: initialFunds.length,
       donation: initialFunds.filter((f) => f.category === 'donation').length,
       corpus: initialFunds.filter((f) => f.category === 'corpus').length,
     }),
     [initialFunds]
   );
 
-  const funds = showTabs ? initialFunds.filter((f) => filter === 'all' || f.category === filter) : initialFunds;
+  const funds = showTabs ? initialFunds.filter((f) => f.category === filter) : initialFunds;
 
   const tabs: { key: Filter; label: string }[] = [
-    { key: 'all', label: isTa ? 'அனைத்தும்' : 'All Funds' },
     { key: 'donation', label: isTa ? 'நன்கொடை பட்டியல்' : 'Donation List' },
     { key: 'corpus', label: isTa ? 'மூலதன நிதி' : 'Corpus Fund' },
   ];
