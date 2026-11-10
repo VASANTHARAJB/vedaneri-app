@@ -7,7 +7,16 @@ type QuickCopy = Dictionary['quick'] & {
   heading?: string;
 };
 
-type Props = { locale: Locale; t: QuickCopy };
+// images is optional: the CMS (Home Page) can replace the photo of each card, in the same order as the cards.
+type Props = { locale: Locale; t: QuickCopy; images?: (string | undefined)[] };
+
+// A card link: a page of this site (/sevas), or a web address, mail or phone link. Anything else goes to the home page.
+function where(raw: string, locale: string): { href: string; external: boolean } {
+  const v = (raw || '').trim();
+  if (/^(https?:\/\/|mailto:|tel:)/i.test(v)) return { href: v, external: true };
+  if (v.startsWith('/') && !v.startsWith('//')) return { href: v === '/' ? `/${locale}` : `/${locale}${v}`, external: false };
+  return { href: `/${locale}`, external: false };
+}
 
 // Photos go in apps/web/public/images/. Until they exist, the gradients show instead.
 // Order must match the "items" order in the dictionary: Ashram, Sevas, Donation, Resources.
@@ -26,13 +35,16 @@ function Arrow() {
   );
 }
 
-export default function QuickAccess({ locale, t }: Props) {
+export default function QuickAccess({ locale, t, images }: Props) {
+  // The dictionary keeps the small heading and the heading at its top level, so the page passes them in. Without a heading, the title is used.
+  const heading = t.heading || t.title;
+  const cardClass = 'group relative isolate flex min-h-[14rem] w-full flex-col justify-end overflow-hidden rounded-2xl text-white shadow-md transition-shadow duration-300 hover:shadow-2xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-saffron';
   return (
     <section aria-labelledby="quick-title" className="bg-white py-10 sm:py-12">
       <div className="mx-auto max-w-7xl px-4 lg:px-8">
         <div className="mx-auto max-w-2xl text-center">
-          <p className="text-sm font-bold uppercase tracking-[0.2em] text-saffron [html[lang='ta']_&]:tracking-normal">{t.eyebrow}</p>
-          <h2 id="quick-title" className="mt-3 font-display !text-3xl !leading-tight font-semibold text-maroon sm:!text-4xl">{t.heading}</h2>
+          {t.eyebrow && <p className="text-sm font-bold uppercase tracking-[0.2em] text-saffron [html[lang='ta']_&]:tracking-normal">{t.eyebrow}</p>}
+          <h2 id="quick-title" className="mt-3 font-display !text-3xl !leading-tight font-semibold text-maroon sm:!text-4xl">{heading}</h2>
           <div aria-hidden="true" className="mt-4 flex items-center justify-center gap-3">
             <span className="h-px w-14 bg-saffron" />
             <span className="h-2 w-2 rotate-45 bg-saffron" />
@@ -44,16 +56,14 @@ export default function QuickAccess({ locale, t }: Props) {
           {t.items.map((item, i) => {
             const c = CARDS[i];
             if (!c) return null;
-            return (
-              <li key={item.title} className={`flex ${c.span}`}>
-                <Link
-                  href={`/${locale}${item.href}`}
-                  className="group relative isolate flex min-h-[14rem] w-full flex-col justify-end overflow-hidden rounded-2xl text-white shadow-md transition-shadow duration-300 hover:shadow-2xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-saffron"
-                >
+            const to = where(item.href, locale);
+            const photo = images?.[i];
+            const inner = (
+              <>
                   <div
                     aria-hidden="true"
                     className="absolute inset-0 -z-10 bg-cover bg-center transition-transform duration-700 group-hover:scale-110 motion-reduce:transition-none"
-                    style={{ backgroundImage: `url('${c.img}'), ${c.fallback}` }}
+                    style={{ backgroundImage: `${photo ? `url('${photo}'), ` : ''}url('${c.img}'), ${c.fallback}` }}
                   />
                   <div aria-hidden="true" className="absolute inset-0 -z-10 bg-gradient-to-t from-charcoal/95 via-charcoal/55 to-charcoal/10" />
                   <span aria-hidden="true" className="absolute right-5 top-3 font-display text-5xl font-semibold text-white/25">{`0${i + 1}`}</span>
@@ -67,7 +77,13 @@ export default function QuickAccess({ locale, t }: Props) {
                       <Arrow />
                     </span>
                   </div>
-                </Link>
+              </>
+            );
+            return (
+              <li key={`${item.title}-${i}`} className={`flex ${c.span}`}>
+                {to.external
+                  ? <a href={to.href} className={cardClass} {...(/^https?:/i.test(to.href) ? { target: '_blank', rel: 'noopener noreferrer' } : {})}>{inner}</a>
+                  : <Link href={to.href} className={cardClass}>{inner}</Link>}
               </li>
             );
           })}

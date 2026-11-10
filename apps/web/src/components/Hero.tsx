@@ -1,13 +1,22 @@
+import type React from 'react';
 import Link from 'next/link';
 import type { Locale } from '@/lib/i18n';
 import type { Dictionary } from '@/lib/dictionary';
 
+// A button link already worked out by the page: a page of this site, or another website
+export type HeroLink = { href: string; external: boolean };
+
 type Props = {
   locale: Locale;
   t: Dictionary['hero'];
+  // All optional. The CMS (Home Page) can replace the two photos and the two button links.
+  bgImage?: string;
+  photo?: string;
+  primary?: HeroLink;
+  secondary?: HeroLink;
 };
 
-// Photos go in apps/web/public/images/. Until they exist, these palette gradients show instead.
+// Photos go in apps/web/public/images/. A photo uploaded in the CMS shows first; until a photo exists, these palette gradients show instead.
 const BG_FALLBACK = 'linear-gradient(135deg, #231A18 0%, #7A1C1C 100%)'; // charcoal to maroon
 const PHOTO_FALLBACK = 'linear-gradient(180deg, #F3E4E1 0%, #7A1C1C 100%)'; // rose to maroon
 
@@ -45,8 +54,20 @@ function Arrow() {
   );
 }
 
-export default function Hero({ locale, t }: Props) {
+const btnPrimary = 'group inline-flex items-center justify-center gap-2 rounded-md bg-saffron px-7 py-3.5 text-base font-bold text-charcoal shadow-lg transition duration-300 hover:-translate-y-0.5 hover:shadow-2xl';
+const btnSecondary = 'inline-flex items-center justify-center rounded-md border-2 border-white/90 px-7 py-3.5 text-base font-semibold text-white backdrop-blur-sm transition duration-300 hover:-translate-y-0.5 hover:bg-white hover:text-maroon';
+
+// A page of this site uses Link; another website opens in a new tab
+function Go({ to, className, children }: { to: HeroLink; className: string; children: React.ReactNode }) {
+  if (!to.external) return <Link href={to.href} className={className}>{children}</Link>;
+  const web = /^https?:/i.test(to.href);
+  return <a href={to.href} className={className} {...(web ? { target: '_blank', rel: 'noopener noreferrer' } : {})}>{children}</a>;
+}
+
+export default function Hero({ locale, t, bgImage, photo, primary, secondary }: Props) {
   const href = (path: string) => `/${locale}${path}`;
+  const toPrimary: HeroLink = primary ?? { href: href('/sevas'), external: false };
+  const toSecondary: HeroLink = secondary ?? { href: href('/audio'), external: false };
 
   return (
     <section aria-labelledby="hero-title" className="relative isolate overflow-hidden bg-charcoal text-white">
@@ -54,7 +75,7 @@ export default function Hero({ locale, t }: Props) {
       <div
         aria-hidden="true"
         className="absolute inset-0 -z-20 animate-kenburns bg-cover bg-center motion-reduce:animate-none"
-        style={{ backgroundImage: `url('/images/hero-bg.jpg'), ${BG_FALLBACK}` }}
+        style={{ backgroundImage: `${bgImage ? `url('${bgImage}'), ` : ''}url('/images/hero-bg.jpg'), ${BG_FALLBACK}` }}
       />
 
       {/* 2. Overlays: dark on the left for text contrast, open on the right for visuals */}
@@ -114,19 +135,13 @@ export default function Hero({ locale, t }: Props) {
             className="animate-fade-up mt-8 flex flex-col items-stretch gap-4 motion-reduce:animate-none sm:flex-row sm:justify-center lg:justify-start"
             style={{ animationDelay: '640ms' }}
           >
-            <Link
-              href={href('/sevas')}
-              className="group inline-flex items-center justify-center gap-2 rounded-md bg-saffron px-7 py-3.5 text-base font-bold text-charcoal shadow-lg transition duration-300 hover:-translate-y-0.5 hover:shadow-2xl"
-            >
+            <Go to={toPrimary} className={btnPrimary}>
               {t.primary}
               <Arrow />
-            </Link>
-            <Link
-              href={href('/audio')}
-              className="inline-flex items-center justify-center rounded-md border-2 border-white/90 px-7 py-3.5 text-base font-semibold text-white backdrop-blur-sm transition duration-300 hover:-translate-y-0.5 hover:bg-white hover:text-maroon"
-            >
+            </Go>
+            <Go to={toSecondary} className={btnSecondary}>
               {t.secondary}
-            </Link>
+            </Go>
           </div>
         </div>
 
@@ -144,7 +159,7 @@ export default function Hero({ locale, t }: Props) {
               role="img"
               aria-label={t.photoAlt}
               className="relative aspect-[5/7] overflow-hidden rounded-b-[1.5rem] rounded-t-[9999px] border-[3px] border-saffron bg-cover bg-top shadow-[0_0_60px_rgba(217,119,6,0.35)]"
-              style={{ backgroundImage: `url('/images/swamiji.jpg'), ${PHOTO_FALLBACK}` }}
+              style={{ backgroundImage: `${photo ? `url('${photo}'), ` : ''}url('/images/swamiji.jpg'), ${PHOTO_FALLBACK}` }}
             />
           </div>
         </div>

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import type { ReactNode } from 'react';
 import Reveal from '@/components/Reveal';
 import SectionTitle from '@/components/SectionTitle';
 import { getDictionary } from '@/lib/dictionary';
@@ -8,23 +9,104 @@ import { isLocale } from '@/lib/i18n';
 
 type Params = { params: Promise<{ locale: string }> };
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
+const FILES = API_BASE.replace(/\/api\/v1\/?$/, '');
+const PAGE_URL = `${API_BASE}/pages/vidyapitham`;
+
+type Bi = { en?: string; ta?: string };
+
+// Content saved in the CMS. If the API is down the page still shows the dictionary text,
+// and the reason is printed in the web terminal.
+async function loadContent(): Promise<any> {
+  try {
+    const res = await fetch(PAGE_URL, { cache: 'no-store' });
+    if (!res.ok) {
+      console.error(`[vidyapitham] fetch failed ${res.status} ${PAGE_URL}`);
+      return {};
+    }
+    return (await res.json()).content || {};
+  } catch (e: any) {
+    console.error(`[vidyapitham] fetch error ${PAGE_URL}:`, e?.cause?.code || e?.message || e);
+    return {};
+  }
+}
+
+const img = (u?: string) => (u ? `${FILES}${u}` : '');
+
+// A link saved in the CMS: a page of this site (/contact), or a web address, mail or phone link.
+// Anything else (for example javascript:) is ignored, so a typing mistake cannot break the page.
+type Target = { kind: 'page' | 'external'; href: string } | null;
+function target(raw: string, locale: string): Target {
+  const v = String(raw || '').trim();
+  if (!v) return null;
+  if (/^(https?:\/\/|mailto:|tel:)/i.test(v)) return { kind: 'external', href: v };
+  if (v.startsWith('/') && !v.startsWith('//')) return { kind: 'page', href: v === '/' ? `/${locale}` : `/${locale}${v}` };
+  return null;
+}
+
+// A link that opens inside the site, or in a new tab for another website
+function Go({ tg, className, children }: { tg: NonNullable<Target>; className: string; children: ReactNode }) {
+  return tg.kind === 'page' ? (
+    <Link href={tg.href} className={className}>{children}</Link>
+  ) : (
+    <a href={tg.href} className={className} target="_blank" rel="noopener noreferrer">{children}</a>
+  );
+}
+
+// Plain text fields: CMS text when filled in, otherwise the dictionary text
+const TEXT_KEYS = [
+  'eyebrow', 'title', 'tagline', 'heroAlt', 'est', 'intro',
+  'aboutTitle', 'aboutText1', 'aboutText2', 'photoAlt',
+  'murtisTitle', 'murtisText', 'murtiTag', 'kshetraTitle', 'kshetraText',
+  'historyTitle', 'worshipText', 'featuresTitle', 'featuresNote',
+  'scheduleTitle', 'scheduleText', 'scheduleNote', 'morningLabel', 'eveningLabel',
+  'corpusTitle', 'corpusText', 'corpusCta', 'trustTitle', 'trustText', 'trustReg',
+  'visitTitle', 'address', 'visitCta', 'moreTitle',
+] as const;
+
+function build(base: any, c: any, locale: 'en' | 'ta') {
+  const pick = (x: Bi | undefined, fb: any) => (x && typeof x[locale] === 'string' && x[locale]!.trim() ? x[locale] : fb);
+  const list = (arr: any[] | undefined, fb: any[], map: (x: any, f: any) => any) =>
+    Array.isArray(arr) && arr.length > 0 ? arr.map((x, i) => map(x, fb?.[i] ?? {})) : fb;
+  const pair = (fields: string[]) => (x: any, f: any) => Object.fromEntries(fields.map((k) => [k, pick(x?.[k], f?.[k] ?? '')]));
+  const slot = (x: any, f: any) => ({ time: pick(x?.time, f.time ?? ''), label: pick(x?.label, f.label ?? ''), kind: x?.gate ? 'gate' : 'puja' });
+
+  const out: any = { ...base };
+  out.meta = { title: pick(c.meta_title, base.meta.title), description: pick(c.meta_description, base.meta.description) };
+  for (const k of TEXT_KEYS) out[k] = pick(c[k], base[k]);
+  out.stats = list(c.stats, base.stats, pair(['value', 'label']));
+  out.murtis = list(c.murtis, base.murtis, (x, f) => pick(x, typeof f === 'string' ? f : '')).filter(Boolean);
+  out.kshetra = list(c.kshetra, base.kshetra, pair(['label', 'value']));
+  out.history = list(c.history, base.history, pair(['when', 'title', 'text']));
+  out.features = list(c.features, base.features, pair(['label', 'value']));
+  out.morning = list(c.morning, base.morning, slot).filter((r: { label: string }) => r.label);
+  out.evening = list(c.evening, base.evening, slot).filter((r: { label: string }) => r.label);
+  out.corpusOptions = list(c.corpusOptions, base.corpusOptions, pair(['label', 'value']));
+  out.corpusLink = typeof c.corpusLink === 'string' && c.corpusLink.trim() ? c.corpusLink.trim() : '/sevas';
+  out.visitLink = typeof c.visitLink === 'string' && c.visitLink.trim() ? c.visitLink.trim() : '/contact';
+  // null means the CMS has no links saved yet, so the page shows its own three
+  out.links = Array.isArray(c.links)
+    ? c.links
+        .map((x: any) => ({ label: pick(x?.label, ''), href: typeof x?.href === 'string' ? x.href.trim() : '' }))
+        .filter((x: { label: string; href: string }) => x.label && x.href)
+    : null;
+  return out;
+}
+
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { locale } = await params;
   if (!isLocale(locale)) return {};
-  const t = getDictionary(locale);
-  return {
-    title: `${t.vidyapitham.meta.title} | ${t.site.name}`,
-    description: t.vidyapitham.meta.description,
-  };
+  const dict = getDictionary(locale);
+  const c = await loadContent();
+  const t = build(dict.vidyapitham, c, locale as 'en' | 'ta');
+  return { title: `${t.meta.title} | ${dict.site.name}`, description: t.meta.description };
 }
 
-// Photos (put them in apps/web/public/images/):
+// Photos: the one uploaded in the CMS shows first, then the old file in apps/web/public/images/
 //   vidyapitham-hero.jpg  the temple or the Moolavar, square-ish, about 1000x1000
 //   vidyapitham.jpg       the temple with the vimanam, about 1200x900
-// Until they exist, a gradient shows.
+// and last a gradient.
 const FALLBACK = 'linear-gradient(135deg, #F3E4E1 0%, #7A1C1C 100%)';
-const HERO = `url('/images/vidyapitham-hero.jpg'), ${FALLBACK}`;
-const TEMPLE = `url('/images/vidyapitham.jpg'), ${FALLBACK}`;
 
 function Flame({ className = '' }: { className?: string }) {
   return (
@@ -64,10 +146,10 @@ function ScheduleCard({ title, rows }: { title: string; rows: Slot[] }) {
     <div className="overflow-hidden rounded-2xl bg-white shadow-lg ring-1 ring-rose">
       <h3 className="bg-maroon px-6 py-4 font-display text-2xl font-semibold !text-white [html[lang='ta']_&]:!leading-[1.4]">{title}</h3>
       <ol className="divide-y divide-rose">
-        {rows.map((r) => {
+        {rows.map((r, i) => {
           const gate = r.kind === 'gate';
           return (
-            <li key={`${r.time}-${r.label}`} className={`flex items-start gap-4 px-5 py-3.5 ${gate ? 'bg-saffron/15' : ''}`}>
+            <li key={`${r.time}-${r.label}-${i}`} className={`flex items-start gap-4 px-5 py-3.5 ${gate ? 'bg-saffron/15' : ''}`}>
               <span className={`w-28 shrink-0 rounded-full px-3 py-1 text-center text-sm font-bold ${gate ? 'bg-charcoal text-white' : 'bg-rose text-maroon'} [html[lang='ta']_&]:text-xs`}>{r.time}</span>
               <span className={`pt-0.5 leading-snug ${gate ? 'font-bold text-charcoal' : 'font-medium text-charcoal/90'}`}>{r.label}</span>
             </li>
@@ -82,13 +164,20 @@ export default async function VidyapithamPage({ params }: Params) {
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
   const dict = getDictionary(locale);
-  const t = dict.vidyapitham;
+  const c = await loadContent();
+  const t = build(dict.vidyapitham, c, locale as 'en' | 'ta');
   const href = (p: string) => `/${locale}${p}`;
-  const more = [
+  const more: { label: string; href: string }[] = t.links ?? [
     { label: dict.nav.omkarananda, href: '/about/omkarananda' },
     { label: dict.nav.ashramam, href: '/about/ashramam' },
     { label: dict.nav.adhishtanam, href: '/about/adhishtanam' },
   ];
+  const visit = target(t.visitLink, locale) ?? { kind: 'page' as const, href: href('/contact') };
+  const corpus = target(t.corpusLink, locale) ?? { kind: 'page' as const, href: href('/sevas') };
+
+  // A photo uploaded in the CMS first, then the old file in /public/images, then a gradient
+  const HERO = `${img(c.heroImage) ? `url('${img(c.heroImage)}'), ` : ''}url('/images/vidyapitham-hero.jpg'), ${FALLBACK}`;
+  const TEMPLE = `${img(c.templeImage) ? `url('${img(c.templeImage)}'), ` : ''}url('/images/vidyapitham.jpg'), ${FALLBACK}`;
 
   return (
     <main>
@@ -146,16 +235,18 @@ export default async function VidyapithamPage({ params }: Params) {
       </section>
 
       {/* 2. Three facts, overlapping the hero */}
-      <div className="mx-auto max-w-5xl px-4 lg:px-8">
-        <dl className="relative z-10 -mt-10 grid gap-px overflow-hidden rounded-2xl bg-rose shadow-xl sm:grid-cols-3">
-          {t.stats.map((s) => (
-            <div key={s.label} className="bg-white px-6 py-6 text-center">
-              <dd className="font-display text-3xl font-semibold leading-tight text-maroon [html[lang='ta']_&]:text-2xl">{s.value}</dd>
-              <dt className="mt-1 text-sm font-semibold text-charcoal/80">{s.label}</dt>
-            </div>
-          ))}
-        </dl>
-      </div>
+      {t.stats.length > 0 && (
+        <div className="mx-auto max-w-5xl px-4 lg:px-8">
+          <dl className="relative z-10 -mt-10 grid gap-px overflow-hidden rounded-2xl bg-rose shadow-xl sm:grid-cols-3">
+            {t.stats.map((s: { value: string; label: string }, i: number) => (
+              <div key={`${s.label}-${i}`} className="bg-white px-6 py-6 text-center">
+                <dd className="font-display text-3xl font-semibold leading-tight text-maroon [html[lang='ta']_&]:text-2xl">{s.value}</dd>
+                <dt className="mt-1 text-sm font-semibold text-charcoal/80">{s.label}</dt>
+              </div>
+            ))}
+          </dl>
+        </div>
+      )}
 
       {/* 3. About: text and photo */}
       <section aria-labelledby="about-title" className={`bg-white ${sectionPad}`}>
@@ -168,7 +259,7 @@ export default async function VidyapithamPage({ params }: Params) {
               <span className="h-px w-12 bg-saffron" />
             </div>
             <p className="mt-6 font-serif text-lg leading-relaxed text-charcoal">{t.aboutText1}</p>
-            <p className="mt-4 font-serif text-lg leading-relaxed text-charcoal/90">{t.aboutText2}</p>
+            {t.aboutText2 && <p className="mt-4 font-serif text-lg leading-relaxed text-charcoal/90">{t.aboutText2}</p>}
           </Reveal>
           <Reveal delay={150}>
             <div className="relative pb-4 pl-4">
@@ -185,26 +276,28 @@ export default async function VidyapithamPage({ params }: Params) {
       </section>
 
       {/* 4. The six Shanmatha Murtis */}
-      <section aria-labelledby="murtis-title" className={`bg-rose/50 ${sectionPad}`}>
-        <div className="mx-auto max-w-6xl px-4 lg:px-8">
-          <SectionTitle id="murtis-title" title={t.murtisTitle} subtitle={t.murtisText} />
-          <ul className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-            {t.murtis.map((m, i) => (
-              <li key={m}>
-                <Reveal delay={(i % 3) * 120} className="h-full">
-                  <div className="flex h-full items-center gap-4 rounded-2xl border-l-4 border-saffron bg-white p-5 shadow-md">
-                    <span aria-hidden="true" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-maroon font-display text-xl font-semibold text-white ring-4 ring-rose">{i + 1}</span>
-                    <div>
-                      <p className="font-display text-xl font-semibold leading-tight text-maroon [html[lang='ta']_&]:!leading-[1.4] [html[lang='ta']_&]:text-lg">{m}</p>
-                      <p className="mt-0.5 text-sm text-charcoal/75">{t.murtiTag}</p>
+      {t.murtis.length > 0 && (
+        <section aria-labelledby="murtis-title" className={`bg-rose/50 ${sectionPad}`}>
+          <div className="mx-auto max-w-6xl px-4 lg:px-8">
+            <SectionTitle id="murtis-title" title={t.murtisTitle} subtitle={t.murtisText} />
+            <ul className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+              {t.murtis.map((m: string, i: number) => (
+                <li key={`${m}-${i}`}>
+                  <Reveal delay={(i % 3) * 120} className="h-full">
+                    <div className="flex h-full items-center gap-4 rounded-2xl border-l-4 border-saffron bg-white p-5 shadow-md">
+                      <span aria-hidden="true" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-maroon font-display text-xl font-semibold text-white ring-4 ring-rose">{i + 1}</span>
+                      <div>
+                        <p className="font-display text-xl font-semibold leading-tight text-maroon [html[lang='ta']_&]:!leading-[1.4] [html[lang='ta']_&]:text-lg">{m}</p>
+                        {t.murtiTag && <p className="mt-0.5 text-sm text-charcoal/75">{t.murtiTag}</p>}
+                      </div>
                     </div>
-                  </div>
-                </Reveal>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </section>
+                  </Reveal>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
+      )}
 
       {/* 5. Features of an ideal kshetra: maroon band */}
       <section aria-labelledby="kshetra-title" className={`relative isolate overflow-hidden bg-maroon text-white ${sectionPad}`}>
@@ -219,8 +312,8 @@ export default async function VidyapithamPage({ params }: Params) {
           </div>
           <p className="mx-auto mt-5 max-w-2xl font-serif text-lg text-white/90">{t.kshetraText}</p>
           <dl className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-            {t.kshetra.map((k, i) => (
-              <Reveal key={k.label} delay={i * 100}>
+            {t.kshetra.map((k: { label: string; value: string }, i: number) => (
+              <Reveal key={`${k.label}-${i}`} delay={i * 100}>
                 <div className="h-full rounded-2xl border-2 border-saffron/70 bg-white/10 px-5 py-7">
                   <dt className="text-sm font-bold uppercase tracking-wider text-saffron [html[lang='ta']_&]:tracking-normal">{k.label}</dt>
                   <dd className="mt-2 font-display text-2xl font-semibold leading-tight text-white [html[lang='ta']_&]:!leading-[1.4] [html[lang='ta']_&]:text-xl">{k.value}</dd>
@@ -236,8 +329,8 @@ export default async function VidyapithamPage({ params }: Params) {
         <div className="mx-auto max-w-6xl px-4 lg:px-8">
           <SectionTitle id="history-title" title={t.historyTitle} />
           <ol className="mt-10 grid gap-6 md:grid-cols-3">
-            {t.history.map((h, i) => (
-              <li key={h.when}>
+            {t.history.map((h: { when: string; title: string; text: string }, i: number) => (
+              <li key={`${h.when}-${i}`}>
                 <Reveal delay={i * 120} className="h-full">
                   <article className="relative h-full rounded-2xl bg-rose/50 p-7 pt-10 ring-1 ring-rose">
                     <p className="absolute -top-5 left-6 rounded-full bg-saffron px-5 py-2 font-display text-xl font-semibold text-charcoal shadow-md [html[lang='ta']_&]:text-lg">{h.when}</p>
@@ -248,9 +341,11 @@ export default async function VidyapithamPage({ params }: Params) {
               </li>
             ))}
           </ol>
-          <Reveal>
-            <p className="mx-auto mt-10 max-w-3xl rounded-2xl border-2 border-saffron/60 bg-white p-6 text-center font-serif text-lg leading-relaxed text-charcoal">{t.worshipText}</p>
-          </Reveal>
+          {t.worshipText && (
+            <Reveal>
+              <p className="mx-auto mt-10 max-w-3xl rounded-2xl border-2 border-saffron/60 bg-white p-6 text-center font-serif text-lg leading-relaxed text-charcoal">{t.worshipText}</p>
+            </Reveal>
+          )}
         </div>
       </section>
 
@@ -259,8 +354,8 @@ export default async function VidyapithamPage({ params }: Params) {
         <div className="mx-auto max-w-6xl px-4 lg:px-8">
           <SectionTitle id="features-title" title={t.featuresTitle} />
           <dl className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {t.features.map((f, i) => (
-              <Reveal key={f.label} delay={(i % 3) * 100} className="h-full">
+            {t.features.map((f: { label: string; value: string }, i: number) => (
+              <Reveal key={`${f.label}-${i}`} delay={(i % 3) * 100} className="h-full">
                 <div className="h-full rounded-xl bg-white p-5 shadow-sm ring-1 ring-rose">
                   <dt className="text-xs font-bold uppercase tracking-wider text-maroon [html[lang='ta']_&]:tracking-normal">{f.label}</dt>
                   <dd className="mt-1 font-semibold leading-snug text-charcoal">{f.value}</dd>
@@ -268,7 +363,7 @@ export default async function VidyapithamPage({ params }: Params) {
               </Reveal>
             ))}
           </dl>
-          <p className="mx-auto mt-8 max-w-3xl text-center font-serif text-lg text-charcoal/85">{t.featuresNote}</p>
+          {t.featuresNote && <p className="mx-auto mt-8 max-w-3xl text-center font-serif text-lg text-charcoal/85">{t.featuresNote}</p>}
         </div>
       </section>
 
@@ -277,14 +372,18 @@ export default async function VidyapithamPage({ params }: Params) {
         <div className="mx-auto max-w-6xl px-4 lg:px-8">
           <SectionTitle id="schedule-title" title={t.scheduleTitle} subtitle={t.scheduleText} />
           <div className="mt-10 grid items-start gap-6 lg:grid-cols-2">
-            <Reveal>
-              <ScheduleCard title={t.morningLabel} rows={t.morning} />
-            </Reveal>
-            <Reveal delay={150}>
-              <ScheduleCard title={t.eveningLabel} rows={t.evening} />
-            </Reveal>
+            {t.morning.length > 0 && (
+              <Reveal>
+                <ScheduleCard title={t.morningLabel} rows={t.morning} />
+              </Reveal>
+            )}
+            {t.evening.length > 0 && (
+              <Reveal delay={150}>
+                <ScheduleCard title={t.eveningLabel} rows={t.evening} />
+              </Reveal>
+            )}
           </div>
-          <p className="mt-6 text-center text-sm text-charcoal/75">{t.scheduleNote}</p>
+          {t.scheduleNote && <p className="mt-6 text-center text-sm text-charcoal/75">{t.scheduleNote}</p>}
         </div>
       </section>
 
@@ -300,20 +399,20 @@ export default async function VidyapithamPage({ params }: Params) {
           </div>
           <p className="mx-auto mt-5 max-w-2xl font-serif text-lg leading-relaxed text-white/90">{t.corpusText}</p>
           <ul className="mx-auto mt-8 grid max-w-2xl gap-5 sm:grid-cols-2">
-            {t.corpusOptions.map((o) => (
-              <li key={o.label} className="rounded-2xl border-2 border-saffron bg-white/10 px-6 py-7">
+            {t.corpusOptions.map((o: { label: string; value: string }, i: number) => (
+              <li key={`${o.label}-${i}`} className="rounded-2xl border-2 border-saffron bg-white/10 px-6 py-7">
                 <p className="text-sm font-bold uppercase tracking-wider text-saffron [html[lang='ta']_&]:tracking-normal">{o.label}</p>
                 <p className="mt-2 font-display text-5xl font-semibold leading-none text-white">{o.value}</p>
               </li>
             ))}
           </ul>
-          <Link
-            href={href('/sevas')}
+          <Go
+            tg={corpus}
             className="group mt-8 inline-flex items-center gap-2 rounded-md bg-saffron px-7 py-3 font-semibold text-charcoal transition-colors hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-saffron"
           >
             {t.corpusCta}
             <Arrow />
-          </Link>
+          </Go>
         </div>
       </section>
 
@@ -327,7 +426,7 @@ export default async function VidyapithamPage({ params }: Params) {
             <span className="h-px w-12 bg-saffron" />
           </div>
           <p className="mt-6 font-serif text-lg leading-relaxed text-charcoal">{t.trustText}</p>
-          <p className="mt-4 inline-block rounded-full bg-rose px-4 py-2 text-sm font-bold text-maroon">{t.trustReg}</p>
+          {t.trustReg && <p className="mt-4 inline-block rounded-full bg-rose px-4 py-2 text-sm font-bold text-maroon">{t.trustReg}</p>}
         </div>
       </section>
 
@@ -338,13 +437,13 @@ export default async function VidyapithamPage({ params }: Params) {
             <h2 id="visit-title" className="font-display text-3xl font-semibold leading-tight !text-charcoal sm:text-4xl">{t.visitTitle}</h2>
             <address className="mt-2 text-lg not-italic">{t.address}</address>
           </div>
-          <Link
-            href={href('/contact')}
+          <Go
+            tg={visit}
             className="group inline-flex items-center gap-2 rounded-md bg-charcoal px-7 py-3 font-semibold text-white transition-colors hover:bg-maroon focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-charcoal"
           >
             {t.visitCta}
             <Arrow />
-          </Link>
+          </Go>
         </div>
       </section>
 
@@ -353,17 +452,21 @@ export default async function VidyapithamPage({ params }: Params) {
         <div className="mx-auto max-w-6xl px-4 lg:px-8">
           <SectionTitle id="more-title" title={t.moreTitle} />
           <ul className="mt-8 grid gap-4 sm:grid-cols-3">
-            {more.map((m) => (
-              <li key={m.href}>
-                <Link
-                  href={href(m.href)}
-                  className="group flex items-center justify-between gap-3 rounded-xl border-2 border-rose bg-white px-6 py-5 font-display text-xl font-semibold text-maroon transition-colors hover:border-saffron hover:bg-rose/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-saffron"
-                >
-                  {m.label}
-                  <Arrow />
-                </Link>
-              </li>
-            ))}
+            {more.map((m, i) => {
+              const tg = target(m.href, locale);
+              if (!tg) return null;
+              return (
+                <li key={`${m.href}-${i}`}>
+                  <Go
+                    tg={tg}
+                    className="group flex items-center justify-between gap-3 rounded-xl border-2 border-rose bg-white px-6 py-5 font-display text-xl font-semibold text-maroon transition-colors hover:border-saffron hover:bg-rose/50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-saffron"
+                  >
+                    {m.label}
+                    <Arrow />
+                  </Go>
+                </li>
+              );
+            })}
           </ul>
         </div>
       </section>

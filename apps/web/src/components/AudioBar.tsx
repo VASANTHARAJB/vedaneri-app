@@ -10,20 +10,24 @@ const mmss = (s: number) => {
   return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 };
 
-export default function AudioBar({ t }: { t: Dictionary['audioBar'] }) {
+// src is optional: the CMS (Home Page) can supply the audio file. Without it, the file set in lib/site.ts (FEATURED_AUDIO) is used.
+export default function AudioBar({ t, src }: { t: Dictionary['audioBar']; src?: string }) {
   const ref = useRef<HTMLAudioElement>(null);
   const [playing, setPlaying] = useState(false);
   const [time, setTime] = useState(0);
   const [dur, setDur] = useState(0);
   const [speed, setSpeed] = useState(1);
   const [muted, setMuted] = useState(false);
-  const ready = FEATURED_AUDIO.src !== '';
+  const [failed, setFailed] = useState(false);
+  const file = src || FEATURED_AUDIO.src;
+  const ready = file !== '' && !failed;
 
   const toggle = () => {
     const a = ref.current;
     if (!a) return;
     if (a.paused) {
-      void a.play();
+      // A file that is missing or cannot play must not leave a silent, dead button
+      a.play().catch(() => { if (a.error) setFailed(true); });
     } else {
       a.pause();
     }
@@ -48,8 +52,9 @@ export default function AudioBar({ t }: { t: Dictionary['audioBar'] }) {
       {ready && (
         <audio
           ref={ref}
-          src={FEATURED_AUDIO.src}
-          preload="metadata"
+          src={file}
+          preload="none"
+          onError={() => setFailed(true)}
           onPlay={() => setPlaying(true)}
           onPause={() => setPlaying(false)}
           onTimeUpdate={(e) => setTime(e.currentTarget.currentTime)}
@@ -103,6 +108,7 @@ export default function AudioBar({ t }: { t: Dictionary['audioBar'] }) {
             value={time}
             disabled={!ready}
             aria-label={t.seek}
+            aria-valuetext={`${mmss(time)} / ${mmss(dur)}`}
             onChange={(e) => {
               const v = Number(e.target.value);
               setTime(v);
@@ -157,7 +163,7 @@ export default function AudioBar({ t }: { t: Dictionary['audioBar'] }) {
 
           {ready && (
             <a
-              href={FEATURED_AUDIO.src}
+              href={file}
               download
               aria-label={t.download}
               className="rounded p-1.5 hover:bg-white/15"

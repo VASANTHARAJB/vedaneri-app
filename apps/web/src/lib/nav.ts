@@ -43,7 +43,7 @@ export const NAV: NavItem[] = [
     key: 'contact',
     children: [
       { key: 'contactUs', href: '/contact' },
-      { key: 'accommodation', href: '/contact#accommodation' },
+      { key: 'accommodation', href: '/accommodation' },
     ],
   },
 ];

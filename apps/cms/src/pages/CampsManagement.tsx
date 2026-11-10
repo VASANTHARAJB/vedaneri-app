@@ -27,6 +27,15 @@ interface Reg {
   id: number; name: string; phone: string | null; email: string | null; members: number; notes: string | null; status: string; created_at: string;
   amount?: number | string; payment_status?: string;
 }
+// One person attending, with the ID proof they uploaded
+interface Att {
+  id: number; registration_id: number; seq: number; kind: 'adult' | 'child'; name: string;
+  id_type: 'aadhaar' | 'pan' | 'voter' | 'passport'; id_last4: string; created_at: string;
+  status: string; payment_status: string | null; reg_first: string | null; reg_last: string | null; reg_phone: string | null;
+}
+
+const ID_LABEL: Record<Att['id_type'], string> = { aadhaar: 'Aadhaar', pan: 'PAN', voter: 'Voter ID', passport: 'Passport' };
+const ATT_PAGE = 20;
 
 const emptyForm = {
   title_en: '', title_ta: '', description_en: '', description_ta: '', venue_en: '', venue_ta: '',
@@ -67,6 +76,35 @@ const whenOf = (c: Camp, today: string): When => {
 };
 const imgUrl = (u: string | null) => (u ? (u.startsWith('http') ? u : `${FILES}${u}`) : '');
 async function readJson(res: Response) { try { return await res.json(); } catch { return {}; } }
+
+// The ID files are private, so they cannot be used as a plain <img src>. They are fetched with the admin token.
+async function fetchFileBlob(attId: number, kind: 'photo' | 'doc'): Promise<Blob> {
+  const res = await fetch(`${API}/admin/attendee/${attId}/file/${kind}`, { headers: authHeader(), cache: 'no-store' });
+  if (!res.ok) throw new Error(res.status === 404 ? 'The file is missing on the server.' : 'Could not load the file.');
+  return res.blob();
+}
+
+// Aadhaar is shown in groups of four to make it easy to read
+const prettyId = (type: Att['id_type'], n: string) => (type === 'aadhaar' ? n.replace(/(\d{4})(?=\d)/g, '$1 ') : n);
+
+// Small profile photo that loads itself with the admin token
+function AttThumb({ attId, name, onOpen }: { attId: number; name: string; onOpen: () => void }) {
+  const [src, setSrc] = useState('');
+  const [state, setState] = useState<'load' | 'ok' | 'fail'>('load');
+  useEffect(() => {
+    let alive = true;
+    let url = '';
+    setState('load'); setSrc('');
+    fetchFileBlob(attId, 'photo')
+      .then((b) => { if (!alive) return; url = URL.createObjectURL(b); setSrc(url); setState('ok'); })
+      .catch(() => { if (alive) setState('fail'); });
+    return () => { alive = false; if (url) URL.revokeObjectURL(url); };
+  }, [attId]);
+  if (state === 'ok') {
+    return <button type="button" className="phbtn" onClick={onOpen} title="View larger" aria-label={`View photo of ${name}`}><img className="ph" src={src} alt={`Photo of ${name}`} /></button>;
+  }
+  return <div className="ph phx" title={state === 'fail' ? 'Photo missing' : 'Loading'}>{state === 'fail' ? 'No photo' : '...'}</div>;
+}
 
 // English letters -> Tamil script (phonetic). Uses Google Input Tools, no API key.
 // Returns null if any request fails, so the caller can show a message.
@@ -179,6 +217,7 @@ const CSS = `
 @keyframes cmsk{0%{background-position:100% 50%}100%{background-position:0 50%}}
 .cm .ov{position:fixed;inset:0;z-index:70;display:flex;justify-content:flex-end;background:rgba(17,24,39,.45);}
 .cm .ov.mid{justify-content:center;align-items:center;padding:16px;}
+.cm .ov.top{z-index:90;background:rgba(17,24,39,.7);}
 .cm .drawer{display:flex;flex-direction:column;height:100%;width:100%;background:#fff !important;box-shadow:-12px 0 40px rgba(0,0,0,.2);}
 .cm .dh{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:16px 22px;border-bottom:1px solid var(--line);}
 .cm .db{flex:1;overflow-y:auto;padding:20px 22px;}
@@ -210,6 +249,15 @@ const CSS = `
 .cm .facts dd{font-weight:700;margin-top:2px;word-break:break-word;}
 .cm .banner{height:150px;border-radius:10px;overflow:hidden;background:#f3f4f6;margin-bottom:16px;}
 .cm .banner img{width:100%;height:100%;object-fit:cover;}
+.cm .ph{width:48px;height:48px;border-radius:8px;object-fit:cover;background:#f3f4f6;display:block;}
+.cm .ph.phx{display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--mut) !important;text-align:center;}
+.cm .phbtn{border:none !important;background:transparent !important;padding:0;cursor:zoom-in;display:block;border-radius:8px;}
+.cm .idnum{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-weight:700;letter-spacing:.04em;}
+.cm .lb{background:#fff !important;border-radius:12px;width:100%;max-width:900px;max-height:94vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.4);margin:auto;}
+.cm .lbh{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line);}
+.cm .lbb{padding:12px;overflow:auto;display:flex;align-items:center;justify-content:center;min-height:200px;background:#f3f4f6 !important;border-radius:0 0 12px 12px;}
+.cm .lbb img{max-width:100%;max-height:76vh;object-fit:contain;display:block;}
+.cm .lbb iframe{width:100%;height:76vh;border:0;background:#fff;}
 `;
 
 export default function CampsManagement() {
@@ -253,13 +301,28 @@ export default function CampsManagement() {
 
   // Detail drawer
   const [detailId, setDetailId] = useState<string | null>(null);
-  const [tab, setTab] = useState<'overview' | 'regs'>('overview');
+  const [tab, setTab] = useState<'overview' | 'regs' | 'atts'>('overview');
   const [regs, setRegs] = useState<Reg[]>([]);
   const [regsFor, setRegsFor] = useState<string | null>(null);
   const [regLoading, setRegLoading] = useState(false);
   const [regErr, setRegErr] = useState('');
   const [regQ, setRegQ] = useState('');
   const regReq = useRef(0);
+
+  // Attendees and their ID proof
+  const [atts, setAtts] = useState<Att[]>([]);
+  const [attsFor, setAttsFor] = useState<string | null>(null);
+  const [attLoading, setAttLoading] = useState(false);
+  const [attErr, setAttErr] = useState('');
+  const [attQ, setAttQ] = useState('');
+  const [attType, setAttType] = useState<'all' | Att['id_type']>('all');
+  const [attPage, setAttPage] = useState(1);
+  const [revealed, setRevealed] = useState<Record<number, string>>({});
+  const [revealBusy, setRevealBusy] = useState<number | null>(null);
+  const [revealErr, setRevealErr] = useState<Record<number, string>>({});
+  const [lightbox, setLightbox] = useState<{ title: string; busy: boolean; url: string; mime: string; err: string; name: string } | null>(null);
+  const attReq = useRef(0);
+  const lbReq = useRef(0);
 
   const today = todayStr();
   const detail = camps.find((c) => c.id === detailId) || null;
@@ -472,9 +535,75 @@ export default function CampsManagement() {
     if (detailId && tab === 'regs' && regsFor !== detailId) loadRegs(detailId);
   }, [detailId, tab, regsFor, loadRegs]);
 
-  const openDetail = (c: Camp, t: 'overview' | 'regs' = 'overview') => {
-    setDetailId(c.id); setTab(t); setRegQ('');
+  // ---------- Attendees and ID proof ----------
+  const loadAtts = useCallback(async (id: string) => {
+    const req = ++attReq.current;
+    setAttLoading(true); setAttErr('');
+    try {
+      const res = await fetch(`${API}/admin/${id}/attendees`, { headers: authHeader(), cache: 'no-store' });
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      if (req !== attReq.current) return;
+      setAtts(data.attendees || []);
+    } catch {
+      if (req !== attReq.current) return;
+      setAtts([]); setAttErr('Could not load the attendees.');
+    } finally {
+      if (req === attReq.current) { setAttsFor(id); setAttLoading(false); }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (detailId && tab === 'atts' && attsFor !== detailId) loadAtts(detailId);
+  }, [detailId, tab, attsFor, loadAtts]);
+
+  // Full ID numbers are only kept on screen while the Attendees tab is open
+  useEffect(() => {
+    if (tab !== 'atts' || !detailId) { setRevealed({}); setRevealErr({}); }
+  }, [tab, detailId]);
+
+  useEffect(() => { setAttPage(1); }, [attQ, attType, attsFor]);
+
+  const closeLightbox = useCallback(() => {
+    lbReq.current++;
+    setLightbox((lb) => { if (lb?.url) URL.revokeObjectURL(lb.url); return null; });
+  }, []);
+
+  async function viewFile(a: Att, kind: 'photo' | 'doc') {
+    const req = ++lbReq.current;
+    const title = `${kind === 'photo' ? 'Profile photo' : `${ID_LABEL[a.id_type]} document`} - ${a.name}`;
+    setLightbox((lb) => { if (lb?.url) URL.revokeObjectURL(lb.url); return { title, busy: true, url: '', mime: '', err: '', name: `${a.name.replace(/[^\w]+/g, '_')}-${kind}` }; });
+    try {
+      const blob = await fetchFileBlob(a.id, kind);
+      if (req !== lbReq.current) return;
+      setLightbox((lb) => (lb ? { ...lb, busy: false, url: URL.createObjectURL(blob), mime: blob.type } : lb));
+    } catch (e: any) {
+      if (req !== lbReq.current) return;
+      setLightbox((lb) => (lb ? { ...lb, busy: false, err: e?.message || 'Could not load the file.' } : lb));
+    }
+  }
+
+  async function revealId(a: Att) {
+    setRevealBusy(a.id);
+    setRevealErr((m) => ({ ...m, [a.id]: '' }));
+    try {
+      const res = await fetch(`${API}/admin/attendee/${a.id}/id-number`, { headers: authHeader(), cache: 'no-store' });
+      const d = await readJson(res);
+      if (!res.ok) throw new Error(d.message || 'Could not read the ID number.');
+      setRevealed((m) => ({ ...m, [a.id]: String(d.idNumber || '') }));
+    } catch (e: any) {
+      setRevealErr((m) => ({ ...m, [a.id]: e?.message || 'Could not read the ID number.' }));
+    } finally {
+      setRevealBusy(null);
+    }
+  }
+
+  const hideId = (id: number) => setRevealed((m) => { const n = { ...m }; delete n[id]; return n; });
+
+  const openDetail = (c: Camp, t: 'overview' | 'regs' | 'atts' = 'overview') => {
+    setDetailId(c.id); setTab(t); setRegQ(''); setAttQ(''); setAttType('all');
     if (regsFor !== c.id) { setRegs([]); setRegErr(''); }
+    if (attsFor !== c.id) { setAtts([]); setAttErr(''); }
   };
 
   async function exportRegs(c: Camp) {
@@ -494,13 +623,17 @@ export default function CampsManagement() {
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
-      if (delAsk) { if (!deleting) setDelAsk(null); }
+      if (lightbox) closeLightbox();
+      else if (delAsk) { if (!deleting) setDelAsk(null); }
       else if (open) { if (!saving) setOpen(false); }
       else if (detailId) setDetailId(null);
     };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
-  }, [delAsk, deleting, open, saving, detailId]);
+  }, [lightbox, closeLightbox, delAsk, deleting, open, saving, detailId]);
+
+  // Free the blob when the page is left
+  useEffect(() => () => { setLightbox((lb) => { if (lb?.url) URL.revokeObjectURL(lb.url); return null; }); }, []);
 
   // ---------- Derived list ----------
   const filtered = useMemo(() => {
@@ -557,6 +690,19 @@ export default function CampsManagement() {
   const regPeople = regs.filter((r) => r.status === 'REGISTERED').reduce((s, r) => s + r.members, 0);
   const regPaidTotal = regs.filter((r) => r.status === 'REGISTERED' && r.payment_status === 'PAID').reduce((s, r) => s + (Number(r.amount) || 0), 0);
 
+  const regName = (a: Att) => `${a.reg_first || ''} ${a.reg_last || ''}`.trim() || 'Unknown';
+  const attsShown = useMemo(() => {
+    const t = attQ.trim().toLowerCase();
+    return atts.filter((a) => {
+      if (attType !== 'all' && a.id_type !== attType) return false;
+      if (!t) return true;
+      return `${a.name} ${a.reg_first || ''} ${a.reg_last || ''} ${a.reg_phone || ''} ${a.id_last4}`.toLowerCase().includes(t);
+    });
+  }, [atts, attQ, attType]);
+  const attPages = Math.max(1, Math.ceil(attsShown.length / ATT_PAGE));
+  const attSafePage = Math.min(attPage, attPages);
+  const attRows = attsShown.slice((attSafePage - 1) * ATT_PAGE, attSafePage * ATT_PAGE);
+
   const statusSelect = (c: Camp) => (
     <select value={c.status} onChange={(e) => changeStatus(c, e.target.value as Status)} aria-label={`Status of ${c.title_en}`} className={`pill ${c.status}`}>
       <option value="draft">draft</option>
@@ -600,6 +746,12 @@ export default function CampsManagement() {
     if (r.status === 'PENDING') return <span className="pill waiting">Waiting for payment</span>;
     if (r.payment_status === 'PAID') return <span className="pill ongoing">Paid</span>;
     return <span className="mut">-</span>;
+  };
+
+  const attPay = (a: Att) => {
+    if (a.status === 'PENDING') return <span className="pill waiting">Waiting for payment</span>;
+    if (a.payment_status === 'PAID') return <span className="pill ongoing">Paid</span>;
+    return <span className="pill free">Free</span>;
   };
 
   return (
@@ -743,6 +895,7 @@ export default function CampsManagement() {
                       <td>
                         <div className="acts">
                           <button type="button" className="btn sm" onClick={() => openDetail(c, 'regs')}>Registrations</button>
+                          <button type="button" className="btn sm" onClick={() => openDetail(c, 'atts')}>IDs &amp; photos</button>
                           <button type="button" className="btn sm" onClick={() => openEdit(c)}>Edit</button>
                           <button type="button" className="btn sm dng" onClick={() => setDelAsk({ ids: [c.id] })}>Delete</button>
                         </div>
@@ -778,8 +931,9 @@ export default function CampsManagement() {
                       </div>
                       {c.seats > 0 && <div className="bar" style={{ width: '100%' }}><i className={pct >= 100 ? 'full' : ''} style={{ width: `${pct}%` }} /></div>}
                     </div>
-                    <div className="acts" style={{ marginTop: 'auto', justifyContent: 'flex-start' }}>
+                    <div className="acts" style={{ marginTop: 'auto', justifyContent: 'flex-start', flexWrap: 'wrap' }}>
                       <button type="button" className="btn sm" onClick={() => openDetail(c, 'regs')}>Registrations</button>
+                      <button type="button" className="btn sm" onClick={() => openDetail(c, 'atts')}>IDs &amp; photos</button>
                       <button type="button" className="btn sm" onClick={() => openEdit(c)}>Edit</button>
                       <button type="button" className="btn sm dng" onClick={() => setDelAsk({ ids: [c.id] })}>Delete</button>
                     </div>
@@ -810,7 +964,7 @@ export default function CampsManagement() {
       {/* ===== Detail drawer ===== */}
       {detail && (
         <div className="ov" onClick={() => setDetailId(null)}>
-          <div className="drawer" style={{ maxWidth: 820 }} onClick={(e) => e.stopPropagation()}>
+          <div className="drawer" style={{ maxWidth: 980 }} onClick={(e) => e.stopPropagation()}>
             <div className="dh">
               <div style={{ minWidth: 0 }}>
                 <h2 style={{ fontSize: 18, fontWeight: 800 }}>{detail.title_en}</h2>
@@ -828,6 +982,9 @@ export default function CampsManagement() {
             <div className="tabs">
               <button type="button" className={`tab${tab === 'overview' ? ' on' : ''}`} onClick={() => setTab('overview')}>Overview</button>
               <button type="button" className={`tab${tab === 'regs' ? ' on' : ''}`} onClick={() => setTab('regs')}>Registrations ({detail.registered})</button>
+              <button type="button" className={`tab${tab === 'atts' ? ' on' : ''}`} onClick={() => setTab('atts')}>
+                IDs &amp; photos{attsFor === detail.id && !attLoading && !attErr ? ` (${atts.length})` : ''}
+              </button>
             </div>
 
             <div className="db">
@@ -855,7 +1012,7 @@ export default function CampsManagement() {
                     <button type="button" className="btn dng" onClick={() => setDelAsk({ ids: [detail.id] })}>Delete this camp</button>
                   </div>
                 </>
-              ) : (
+              ) : tab === 'regs' ? (
                 <>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', marginBottom: 14 }}>
                     <input value={regQ} onChange={(e) => setRegQ(e.target.value)} placeholder="Search name, mobile or email" className="inp" style={{ maxWidth: 280 }} aria-label="Search registrations" />
@@ -864,6 +1021,7 @@ export default function CampsManagement() {
                       {detail.fee_type === 'paid' ? ` · ₹${regPaidTotal.toLocaleString('en-IN')} collected` : ''}
                     </span>
                     <span style={{ flex: 1 }} />
+                    <button type="button" className="btn" onClick={() => setTab('atts')}>View IDs &amp; photos</button>
                     <button type="button" className="btn primary" onClick={() => exportRegs(detail)}>Export to Excel</button>
                   </div>
                   {regLoading ? (
@@ -895,6 +1053,94 @@ export default function CampsManagement() {
                         </tbody>
                       </table>
                     </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div className="alert info">
+                    These are private identity documents. Only the last 4 digits show by default. Each time you show a full number, it is written to the server log with your login.
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', marginBottom: 14 }}>
+                    <input value={attQ} onChange={(e) => setAttQ(e.target.value)} placeholder="Search attendee, registered by, mobile or last 4 digits" className="inp" style={{ maxWidth: 360 }} aria-label="Search attendees" />
+                    <select value={attType} onChange={(e) => setAttType(e.target.value as 'all' | Att['id_type'])} className="inp" style={{ width: 'auto' }} aria-label="Filter by ID type">
+                      <option value="all">All ID types</option>
+                      <option value="aadhaar">Aadhaar</option>
+                      <option value="pan">PAN</option>
+                      <option value="voter">Voter ID</option>
+                      <option value="passport">Passport</option>
+                    </select>
+                    <span className="mut">{attsShown.length} of {atts.length} attendee{atts.length === 1 ? '' : 's'}</span>
+                  </div>
+                  {attLoading ? (
+                    <div>{[0, 1, 2].map((i) => <div key={i} className="skel" style={{ margin: '8px 0' }} />)}</div>
+                  ) : attErr ? (
+                    <div role="alert" className="alert bad">
+                      {attErr} <button type="button" className="btn link" onClick={() => loadAtts(detail.id)}>Try again</button>
+                    </div>
+                  ) : atts.length === 0 ? (
+                    <p className="empty mut">No attendee ID details yet. Registrations made before this feature was added do not have them.</p>
+                  ) : attsShown.length === 0 ? (
+                    <p className="empty mut">No attendee matches that search.</p>
+                  ) : (
+                    <>
+                      <div className="tblwrap">
+                        <table className="tbl">
+                          <thead>
+                            <tr><th>Photo</th><th>Attendee</th><th>Registered by</th><th>ID proof</th><th>ID number</th><th>Document</th></tr>
+                          </thead>
+                          <tbody>
+                            {attRows.map((a) => (
+                              <tr key={a.id}>
+                                <td><AttThumb attId={a.id} name={a.name} onOpen={() => viewFile(a, 'photo')} /></td>
+                                <td>
+                                  <strong>{a.name}</strong>
+                                  <span className="mut" style={{ display: 'block', fontSize: 12 }}>{a.kind === 'child' ? 'Child' : 'Adult'} · No. {a.seq}</span>
+                                </td>
+                                <td>
+                                  <div>{regName(a)}</div>
+                                  <span className="mut" style={{ display: 'block', fontSize: 12 }}>{a.reg_phone || ''}</span>
+                                  <div style={{ marginTop: 4 }}>{attPay(a)}</div>
+                                </td>
+                                <td><span className="pill paid">{ID_LABEL[a.id_type] || a.id_type}</span></td>
+                                <td>
+                                  {revealed[a.id] !== undefined ? (
+                                    <div>
+                                      <span className="idnum">{prettyId(a.id_type, revealed[a.id])}</span>
+                                      <div><button type="button" className="btn link" onClick={() => hideId(a.id)}>Hide</button></div>
+                                    </div>
+                                  ) : (
+                                    <div>
+                                      <span className="idnum">•••• {a.id_last4}</span>
+                                      <div>
+                                        <button type="button" className="btn link" disabled={revealBusy === a.id} onClick={() => revealId(a)}>
+                                          {revealBusy === a.id ? 'Loading...' : 'Show full number'}
+                                        </button>
+                                      </div>
+                                      {revealErr[a.id] && <span role="alert" className="err">{revealErr[a.id]}</span>}
+                                    </div>
+                                  )}
+                                </td>
+                                <td>
+                                  <button type="button" className="btn sm" onClick={() => viewFile(a, 'doc')}>View document</button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      {attPages > 1 && (
+                        <div className="pager" style={{ padding: '10px 0 0', border: 'none' }}>
+                          <span className="mut">
+                            {(attSafePage - 1) * ATT_PAGE + 1}–{Math.min(attSafePage * ATT_PAGE, attsShown.length)} of {attsShown.length}
+                          </span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <button type="button" className="btn sm" disabled={attSafePage <= 1} onClick={() => setAttPage(attSafePage - 1)}>Previous</button>
+                            <span>Page {attSafePage} of {attPages}</span>
+                            <button type="button" className="btn sm" disabled={attSafePage >= attPages} onClick={() => setAttPage(attSafePage + 1)}>Next</button>
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
                 </>
               )}
@@ -1036,6 +1282,29 @@ export default function CampsManagement() {
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20 }}>
               <button type="button" className="btn" disabled={deleting} onClick={() => setDelAsk(null)}>Cancel</button>
               <button type="button" className="btn dfill" disabled={deleting} onClick={doDelete}>{deleting ? 'Deleting...' : 'Yes, delete'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== Photo / document viewer ===== */}
+      {lightbox && (
+        <div className="ov mid top" onClick={closeLightbox}>
+          <div className="lb" role="dialog" aria-modal="true" aria-label={lightbox.title} onClick={(e) => e.stopPropagation()}>
+            <div className="lbh">
+              <strong style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{lightbox.title}</strong>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {lightbox.url && (
+                  <a className="btn sm" href={lightbox.url} download={`${lightbox.name}${lightbox.mime === 'application/pdf' ? '.pdf' : lightbox.mime === 'image/png' ? '.png' : lightbox.mime === 'image/webp' ? '.webp' : '.jpg'}`}>Download</a>
+                )}
+                <button type="button" className="btn sm" onClick={closeLightbox}>Close</button>
+              </div>
+            </div>
+            <div className="lbb">
+              {lightbox.busy ? <p className="mut">Loading...</p>
+                : lightbox.err ? <p role="alert" className="err">{lightbox.err}</p>
+                : lightbox.mime === 'application/pdf' ? <iframe src={lightbox.url} title={lightbox.title} />
+                : <img src={lightbox.url} alt={lightbox.title} />}
             </div>
           </div>
         </div>

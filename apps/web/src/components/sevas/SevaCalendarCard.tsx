@@ -5,6 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { rupees } from '@/lib/format';
 import { LiveOffering } from '@/app/[locale]/sevas/[slug]/page';
+import PanchangamDayCard from '@/components/sevas/PanchangamDayCard';
 
 interface SevaCalendarCardProps {
   seva: LiveOffering;
@@ -696,6 +697,9 @@ export default function SevaCalendarCard({ seva, locale }: SevaCalendarCardProps
                 </div>
               </div>
             </div>
+
+            {/* TAMIL PANCHANGAM OF THE SELECTED DATE */}
+            <PanchangamDayCard date={selectedDate} isTa={isTa} />
 
             {/* PROCEED */}
             <button

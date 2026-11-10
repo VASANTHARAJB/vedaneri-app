@@ -3,6 +3,7 @@ import type { Locale } from '@/lib/i18n';
 import type { Dictionary } from '@/lib/dictionary';
 import FestivalCountdown from './FestivalCountdown';
 import Reveal from './Reveal';
+import type { HeroLink } from './Hero';
 
 // Poster: apps/web/public/images/festival.jpg (the festival notice, shown whole, never cropped).
 
@@ -14,10 +15,23 @@ function LampIcon() {
   );
 }
 
-export default function Festival({ locale, t }: { locale: Locale; t: Dictionary['festival'] }) {
+// poster, register, startTime and endTime are optional: the CMS (Home Page) can replace the poster,
+// the button link and the daily puja times (for example "17:00" and "20:30").
+type Props = { locale: Locale; t: Dictionary['festival']; poster?: string; register?: HeroLink; startTime?: string; endTime?: string };
+
+export default function Festival({ locale, t, poster, register, startTime, endTime }: Props) {
   const tag = locale === 'ta' ? 'ta-IN' : 'en-IN';
   const f = (iso: string, o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat(tag, { timeZone: 'UTC', ...o }).format(new Date(iso));
-  const range = `${f(t.start, { day: 'numeric' })} – ${f(t.end, { day: 'numeric' })} ${f(t.end, { month: 'long' })} ${f(t.end, { year: 'numeric' })}`;
+  // 12 – 21 October 2026. A festival across two months reads 28 October – 6 November 2026, and across two years shows both years.
+  const sameYear = t.start.slice(0, 4) === t.end.slice(0, 4);
+  const sameMonth = sameYear && t.start.slice(5, 7) === t.end.slice(5, 7);
+  const range = sameMonth
+    ? `${f(t.start, { day: 'numeric' })} – ${f(t.end, { day: 'numeric' })} ${f(t.end, { month: 'long' })} ${f(t.end, { year: 'numeric' })}`
+    : sameYear
+      ? `${f(t.start, { day: 'numeric', month: 'long' })} – ${f(t.end, { day: 'numeric', month: 'long' })} ${f(t.end, { year: 'numeric' })}`
+      : `${f(t.start, { day: 'numeric', month: 'long', year: 'numeric' })} – ${f(t.end, { day: 'numeric', month: 'long', year: 'numeric' })}`;
+  const toRegister: HeroLink = register ?? { href: `/${locale}/sevas`, external: false };
+  const btn = 'mt-7 inline-flex items-center justify-center rounded-full bg-maroon px-8 py-3 font-bold text-white shadow-lg transition duration-300 hover:-translate-y-0.5 hover:bg-charcoal hover:shadow-xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-saffron';
 
   return (
     <section aria-labelledby="festival-title" className="bg-gradient-to-b from-white to-rose/60 py-14 sm:py-20">
@@ -44,15 +58,12 @@ export default function Festival({ locale, t }: { locale: Locale; t: Dictionary[
 
               {/* Day-by-day tracker */}
               <div className="mt-7 rounded-2xl bg-rose/60 p-4 sm:p-5">
-                <FestivalCountdown t={t} />
+                <FestivalCountdown t={t} startTime={startTime} endTime={endTime} />
               </div>
 
-              <Link
-                href={`/${locale}/sevas`}
-                className="mt-7 inline-flex items-center justify-center rounded-full bg-maroon px-8 py-3 font-bold text-white shadow-lg transition duration-300 hover:-translate-y-0.5 hover:bg-charcoal hover:shadow-xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-saffron"
-              >
-                {t.register}
-              </Link>
+              {toRegister.external
+                ? <a href={toRegister.href} className={btn} {...(/^https?:/i.test(toRegister.href) ? { target: '_blank', rel: 'noopener noreferrer' } : {})}>{t.register}</a>
+                : <Link href={toRegister.href} className={btn}>{t.register}</Link>}
             </div>
 
             {/* Poster with an offset maroon block behind it */}
@@ -61,7 +72,7 @@ export default function Festival({ locale, t }: { locale: Locale; t: Dictionary[
                 <div aria-hidden="true" className="absolute inset-0 translate-x-4 translate-y-4 rounded-2xl bg-maroon" />
                 <div className="relative rounded-2xl bg-white p-2 ring-2 ring-saffron">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src="/images/festival.jpg" alt={t.photoAlt} loading="lazy" className="block h-auto w-full rounded-xl bg-rose" />
+                  <img src={poster || '/images/festival.jpg'} alt={t.photoAlt} loading="lazy" className="block h-auto w-full rounded-xl bg-rose" />
                 </div>
                 <p className="absolute -left-3 top-5 rounded-r-full bg-saffron px-4 py-1.5 text-xs font-bold uppercase tracking-wider text-charcoal shadow-md [html[lang='ta']_&]:tracking-normal">
                   {range}

@@ -36,6 +36,66 @@ const rupees = (n: number) => `₹ ${Number(n).toLocaleString('en-IN')}`;
 type Form = { first: string; last: string; email: string; cc: string; phone: string; adults: string; children: string; city: string; state: string; notes: string };
 const emptyForm: Form = { first: '', last: '', email: '', cc: '+91', phone: '', adults: '1', children: '0', city: '', state: '', notes: '' };
 
+// ---- Every attendee gives a name, an ID proof (type + number + document) and a profile photo ----
+type IdType = '' | 'aadhaar' | 'pan' | 'voter' | 'passport';
+type Att = { name: string; touched: boolean; idType: IdType; idNumber: string; doc: File | null; photo: File | null };
+const emptyAtt = (): Att => ({ name: '', touched: false, idType: '', idNumber: '', doc: null, photo: null });
+const MAX_FILE = 5 * 1024 * 1024; // 5 MB, the server checks the same
+const DOC_TYPES = ['image/jpeg', 'image/png', 'application/pdf'];
+const PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const ID_OPTIONS: { value: Exclude<IdType, ''>; en: string; ta: string; ph: string }[] = [
+  { value: 'aadhaar', en: 'Aadhaar Card', ta: 'ஆதார் அட்டை', ph: '12-digit Aadhaar number' },
+  { value: 'pan', en: 'PAN Card', ta: 'பான் அட்டை', ph: 'ABCDE1234F' },
+  { value: 'voter', en: 'Voter ID (EPIC)', ta: 'வாக்காளர் அடையாள அட்டை', ph: 'ABC1234567' },
+  { value: 'passport', en: 'Passport', ta: 'கடவுச்சீட்டு', ph: 'A1234567' },
+];
+const VD = [
+  [0,1,2,3,4,5,6,7,8,9],[1,2,3,4,0,6,7,8,9,5],[2,3,4,0,1,7,8,9,5,6],[3,4,0,1,2,8,9,5,6,7],[4,0,1,2,3,9,5,6,7,8],
+  [5,9,8,7,6,0,4,3,2,1],[6,5,9,8,7,1,0,4,3,2],[7,6,5,9,8,2,1,0,4,3],[8,7,6,5,9,3,2,1,0,4],[9,8,7,6,5,4,3,2,1,0],
+];
+const VP = [
+  [0,1,2,3,4,5,6,7,8,9],[1,5,7,6,2,8,3,0,9,4],[5,8,0,3,7,9,6,1,4,2],[8,9,1,6,0,4,3,5,2,7],
+  [9,4,5,3,1,2,6,8,7,0],[4,2,8,6,5,7,3,9,0,1],[2,7,9,3,8,0,6,4,1,5],[7,0,4,6,9,1,3,2,5,8],
+];
+function isValidAadhaar(a: string): boolean {
+  if (!/^[2-9][0-9]{11}$/.test(a)) return false;
+  let c = 0;
+  const d = a.split('').reverse().map(Number);
+  for (let i = 0; i < d.length; i++) c = VD[c][VP[i % 8][d[i]]];
+  return c === 0;
+}
+const normalizeId = (v: string) => v.replace(/[\s-]/g, '').toUpperCase();
+function idValid(type: IdType, n: string): boolean {
+  if (type === 'aadhaar') return isValidAadhaar(n);
+  if (type === 'pan') return /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(n);
+  if (type === 'voter') return /^[A-Z]{3}[0-9]{7}$/.test(n);
+  if (type === 'passport') return /^[A-Z][0-9]{7}$/.test(n);
+  return false;
+}
+
+// Small preview of a chosen file (picture, or "PDF")
+function FilePreview({ file }: { file: File | null }) {
+  const [url, setUrl] = useState('');
+  useEffect(() => {
+    if (!file || !file.type.startsWith('image/')) { setUrl(''); return; }
+    const u = URL.createObjectURL(file);
+    setUrl(u);
+    return () => URL.revokeObjectURL(u);
+  }, [file]);
+  if (!file) return null;
+  return (
+    <div className="mt-2 flex items-center gap-3 rounded-md bg-cream/60 p-2">
+      {url ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={url} alt="" className="h-14 w-14 shrink-0 rounded object-cover" />
+      ) : (
+        <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded bg-white text-xs font-bold text-maroon">PDF</span>
+      )}
+      <span className="min-w-0 break-words text-sm text-charcoal/80">{file.name} · {(file.size / 1024 / 1024).toFixed(2)} MB</span>
+    </div>
+  );
+}
+
 const inputCls = (bad?: boolean) =>
   `h-12 w-full rounded-md border px-3.5 text-base text-charcoal placeholder:text-charcoal/40 focus:outline-none focus:ring-2 ${
     bad ? 'border-red-500 bg-red-50 focus:ring-red-300' : 'border-sand bg-white focus:border-maroon focus:ring-saffron/40'
@@ -62,6 +122,8 @@ export default function CampList({ locale }: Props) {
 
   const [active, setActive] = useState<Camp | null>(null);
   const [f, setF] = useState<Form>({ ...emptyForm });
+  const [att, setAtt] = useState<Att[]>([emptyAtt()]);
+  const [fileKey, setFileKey] = useState(0); // changing this empties the file inputs
   const [errs, setErrs] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [prefilling, setPrefilling] = useState(false);
@@ -101,11 +163,23 @@ export default function CampList({ locale }: Props) {
 
   useEffect(() => { load(); loadMine(); }, [load, loadMine]);
 
+  // One attendee card per person: it follows the Adults + Children numbers
+  useEffect(() => {
+    const n = Math.min(25, Math.max(0, (Math.floor(Number(f.adults)) || 0) + (Math.floor(Number(f.children)) || 0)));
+    setAtt((prev) => (prev.length === n ? prev : Array.from({ length: n }, (_, i) => prev[i] || emptyAtt())));
+  }, [f.adults, f.children]);
+
+  // The first attendee is the person registering: use their name until they type another
+  useEffect(() => {
+    const full = `${f.first} ${f.last}`.trim();
+    setAtt((prev) => (prev.length && !prev[0].touched && prev[0].name !== full ? [{ ...prev[0], name: full }, ...prev.slice(1)] : prev));
+  }, [f.first, f.last]);
+
   async function openForm(c: Camp) {
     const tk = token();
     if (!tk) { window.location.href = loginHref; return; }
     if (mine[c.id]) return;
-    setActive(c); setErrs({}); setF({ ...emptyForm }); setPrefilling(true);
+    setActive(c); setErrs({}); setF({ ...emptyForm }); setAtt([emptyAtt()]); setFileKey((k) => k + 1); setPrefilling(true);
     try {
       const res = await fetch(`${API_BASE}/devotee/profile`, { headers: { Authorization: `Bearer ${tk}` } });
       if (res.status === 401) { window.location.href = loginHref; return; }
@@ -133,6 +207,31 @@ export default function CampList({ locale }: Props) {
   }
 
   const set = (k: keyof Form, v: string) => { setF((x) => ({ ...x, [k]: v })); setErrs((e) => ({ ...e, [k]: '', form: '' })); };
+
+  // Change one attendee and clear the red state of the fields that changed
+  function setAttField(i: number, patch: Partial<Att>) {
+    setAtt((prev) => prev.map((a, idx) => (idx === i ? { ...a, ...patch } : a)));
+    setErrs((e) => {
+      const next: Record<string, string> = { ...e, form: '' };
+      Object.keys(patch).forEach((k) => { next[`att-${i}-${k}`] = ''; });
+      return next;
+    });
+  }
+
+  // A chosen file is checked straight away, so the devotee knows before pressing the button
+  function pickFile(i: number, kind: 'doc' | 'photo', file: File | null) {
+    const allowed = kind === 'doc' ? DOC_TYPES : PHOTO_TYPES;
+    let problem = '';
+    if (file && !allowed.includes(file.type)) {
+      problem = kind === 'doc'
+        ? tr('The ID proof must be a JPG, PNG image or a PDF.', 'அடையாளச் சான்று JPG, PNG படமாகவோ PDF ஆகவோ இருக்க வேண்டும்.')
+        : tr('The photo must be a JPG, PNG or WebP image.', 'புகைப்படம் JPG, PNG அல்லது WebP ஆக இருக்க வேண்டும்.');
+    } else if (file && file.size > MAX_FILE) {
+      problem = tr('The file must be 5 MB or smaller.', 'கோப்பு 5 MB அல்லது அதற்கும் குறைவாக இருக்க வேண்டும்.');
+    }
+    setAtt((prev) => prev.map((a, idx) => (idx === i ? { ...a, [kind]: problem ? null : file } : a)));
+    setErrs((e) => ({ ...e, [`att-${i}-${kind}`]: problem, form: '' }));
+  }
 
   function focusFirst(keys: string[]) {
     setTimeout(() => {
@@ -185,6 +284,7 @@ export default function CampList({ locale }: Props) {
           if (vr.ok && vd.registered) {
             setDone({ camp, people: vd.members || people, paid: true });
             setActive(null);
+            setAtt([emptyAtt()]); setFileKey((k) => k + 1);
             load(); loadMine();
           } else {
             setErrs({ form: `${vd.message || tr('We could not confirm your payment.', 'கட்டணத்தை உறுதிசெய்ய இயலவில்லை.')} ${tr('If money was deducted, it will be confirmed automatically within a few minutes, or contact the ashram with this payment id:', 'பணம் எடுக்கப்பட்டிருந்தால் சில நிமிடங்களில் தானாக உறுதியாகும், அல்லது இந்த கட்டண எண்ணுடன் ஆசிரமத்தைத் தொடர்பு கொள்ளவும்:')} ${resp.razorpay_payment_id}` });
@@ -226,9 +326,33 @@ export default function CampList({ locale }: Props) {
     if (!PLACE_RE.test(f.city.trim())) x.city = tr('Enter your city (letters only).', 'நகரத்தை உள்ளிடவும்.');
     if (f.state.trim() && !PLACE_RE.test(f.state.trim())) x.state = tr('State can contain only letters.', 'மாநிலத்தில் எழுத்துக்கள் மட்டும்.');
 
+    // Each attendee: name, ID proof type + number, ID document and photo, all required
+    const attKeys: string[] = [];
+    const seen = new Set<string>();
+    if (!x.adults && !x.children) {
+      att.forEach((a, i) => {
+        const k = (n: string) => `att-${i}-${n}`;
+        const isChild = i >= adults;
+        const label = isChild ? tr(`Child ${i - adults + 1}`, `குழந்தை ${i - adults + 1}`) : tr(`Adult ${i + 1}`, `பெரியவர் ${i + 1}`);
+        if (!NAME_RE.test(a.name.trim())) x[k('name')] = tr(`${label}: enter the name (letters only).`, `${label}: பெயரை உள்ளிடவும்.`);
+        if (!a.idType) x[k('idType')] = tr(`${label}: choose an ID proof.`, `${label}: அடையாளச் சான்றைத் தேர்ந்தெடுக்கவும்.`);
+        else if (isChild && a.idType === 'voter') x[k('idType')] = tr(`${label}: choose Aadhaar, PAN or Passport.`, `${label}: ஆதார், பான் அல்லது கடவுச்சீட்டைத் தேர்ந்தெடுக்கவும்.`);
+        else if (!a.idNumber.trim()) x[k('idNumber')] = tr(`${label}: enter the ID number.`, `${label}: அடையாள எண்ணை உள்ளிடவும்.`);
+        else if (!idValid(a.idType, normalizeId(a.idNumber))) x[k('idNumber')] = tr(`${label}: enter a valid ${ID_OPTIONS.find((o) => o.value === a.idType)?.en} number.`, `${label}: சரியான எண்ணை உள்ளிடவும்.`);
+        else {
+          const dup = `${a.idType}:${normalizeId(a.idNumber)}`;
+          if (seen.has(dup)) x[k('idNumber')] = tr(`${label}: this ID number is already used for another attendee.`, `${label}: இந்த எண் மற்றொருவருக்கு ஏற்கெனவே உள்ளிடப்பட்டுள்ளது.`);
+          seen.add(dup);
+        }
+        if (!a.doc) x[k('doc')] = errs[k('doc')] || tr(`${label}: upload the ID proof document.`, `${label}: அடையாளச் சான்று ஆவணத்தைப் பதிவேற்றவும்.`);
+        if (!a.photo) x[k('photo')] = errs[k('photo')] || tr(`${label}: upload the profile photo.`, `${label}: புகைப்படத்தைப் பதிவேற்றவும்.`);
+        ['name', 'idType', 'idNumber', 'doc', 'photo'].forEach((n) => { if (x[k(n)]) attKeys.push(k(n)); });
+      });
+    }
+
     setErrs(x);
-    const order = ['first', 'last', 'email', 'phone', 'adults', 'children', 'city', 'state'];
-    const bad = order.filter((k) => x[k]);
+    const order = ['first', 'last', 'email', 'phone', 'adults', 'children'];
+    const bad = [...order.filter((k) => x[k]), ...attKeys, ...['city', 'state'].filter((k) => x[k])];
     if (bad.length) { focusFirst(bad.map((k) => `cf-${k}`)); return; }
 
     const tk = token();
@@ -237,13 +361,27 @@ export default function CampList({ locale }: Props) {
     setBusy(true);
     let keepBusy = false;
     try {
+      // Sent as a form with files (the browser sets the content type itself)
+      const body = new FormData();
+      body.append('first_name', f.first.trim());
+      body.append('last_name', f.last.trim());
+      body.append('email', f.email.trim().toLowerCase());
+      body.append('country_code', f.cc);
+      body.append('phone', digits);
+      body.append('adults', String(adults));
+      body.append('children', String(children));
+      body.append('city', f.city.trim());
+      body.append('state', f.state.trim());
+      body.append('notes', f.notes.trim());
+      body.append('attendees', JSON.stringify(att.map((a) => ({ name: a.name.trim(), idType: a.idType, idNumber: normalizeId(a.idNumber) }))));
+      att.forEach((a, i) => {
+        body.append(`photo_${i}`, a.photo as File);
+        body.append(`doc_${i}`, a.doc as File);
+      });
       const res = await fetch(`${API_BASE}/camps/${active.id}/register`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tk}` },
-        body: JSON.stringify({
-          first_name: f.first.trim(), last_name: f.last.trim(), email: f.email.trim().toLowerCase(),
-          country_code: f.cc, phone: digits, adults, children, city: f.city.trim(), state: f.state.trim(), notes: f.notes.trim(),
-        }),
+        headers: { Authorization: `Bearer ${tk}` },
+        body,
       });
       const d = await readJson(res);
       if (res.status === 401) { setErrs({ form: tr('Your session has ended. Please sign in again.', 'உங்கள் அமர்வு முடிந்தது. மீண்டும் உள்நுழையவும்.') }); return; }
@@ -255,6 +393,7 @@ export default function CampList({ locale }: Props) {
       if (!res.ok) {
         const key = d.field === 'first_name' ? 'first' : d.field === 'last_name' ? 'last' : d.field;
         setErrs(key ? { [key]: d.message } : { form: d.message || tr('Could not register. Please try again.', 'பதிவு செய்ய இயலவில்லை.') });
+        if (key) focusFirst([`cf-${key}`]);
         return;
       }
       if (d.payment) {
@@ -264,6 +403,7 @@ export default function CampList({ locale }: Props) {
       }
       setDone({ camp: active, people: d.members || adults + children, paid: false });
       setActive(null);
+      setAtt([emptyAtt()]); setFileKey((k) => k + 1);
       load(); loadMine();
     } catch {
       setErrs({ form: tr('Network error. Please try again.', 'இணைய பிழை. மீண்டும் முயற்சிக்கவும்.') });
@@ -451,6 +591,62 @@ export default function CampList({ locale }: Props) {
                     <div className="flex h-12 items-center rounded-md border border-sand bg-cream/60 px-3.5 text-xl font-bold text-maroon">{total}</div>
                   </div>
                 </div>
+              </section>
+
+              <section className="space-y-4">
+                <h3 className="border-b border-sand pb-2 text-sm font-bold uppercase tracking-[0.14em] text-maroon">{tr('Identification of every attendee', 'ஒவ்வொருவரின் அடையாளச் சான்று')}</h3>
+                <p className="text-sm text-charcoal/75">
+                  {tr(
+                    'Each person attending needs an ID proof (number and document) and a profile photo. ID numbers are stored encrypted, and the documents are seen only by the ashram office. A child can use Aadhaar, PAN or Passport.',
+                    'வருகை தரும் ஒவ்வொருவருக்கும் அடையாளச் சான்று (எண் மற்றும் ஆவணம்) மற்றும் புகைப்படம் தேவை. அடையாள எண்கள் குறியாக்கம் செய்து சேமிக்கப்படும்; ஆவணங்களை ஆசிரம அலுவலகம் மட்டுமே பார்க்கும். குழந்தைகள் ஆதார், பான் அல்லது கடவுச்சீட்டைப் பயன்படுத்தலாம்.'
+                  )}
+                </p>
+                {att.map((a, i) => {
+                  const adultsN = Math.floor(Number(f.adults)) || 0;
+                  const isChild = i >= adultsN;
+                  const title = isChild ? tr(`Child ${i - adultsN + 1}`, `குழந்தை ${i - adultsN + 1}`) : i === 0 ? tr('Adult 1 (you)', 'பெரியவர் 1 (நீங்கள்)') : tr(`Adult ${i + 1}`, `பெரியவர் ${i + 1}`);
+                  const opts = isChild ? ID_OPTIONS.filter((o) => o.value !== 'voter') : ID_OPTIONS;
+                  const idOpt = ID_OPTIONS.find((o) => o.value === a.idType);
+                  const e = (n: string) => errs[`att-${i}-${n}`];
+                  const fileCls = 'mt-0 block w-full text-sm text-charcoal file:mr-3 file:rounded-md file:border-0 file:bg-maroon file:px-4 file:py-2 file:font-semibold file:text-white hover:file:bg-charcoal';
+                  return (
+                    <div key={i} className="space-y-4 rounded-lg border border-sand bg-cream/40 p-4">
+                      <p className="text-sm font-bold uppercase tracking-wider text-maroon">{title}</p>
+                      <Field id={`cf-att-${i}-name`} label={tr('Full name *', 'முழுப் பெயர் *')} error={e('name')}>
+                        <input id={`cf-att-${i}-name`} value={a.name} onChange={(ev) => setAttField(i, { name: cleanName(ev.target.value), touched: true })} className={inputCls(!!e('name'))} />
+                      </Field>
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <Field id={`cf-att-${i}-idType`} label={tr('ID proof *', 'அடையாளச் சான்று *')} error={e('idType')}>
+                          <select id={`cf-att-${i}-idType`} value={a.idType} onChange={(ev) => setAttField(i, { idType: ev.target.value as IdType })} className={inputCls(!!e('idType'))}>
+                            <option value="">{tr('-- Choose --', '-- தேர்வு செய்க --')}</option>
+                            {opts.map((o) => <option key={o.value} value={o.value}>{tr(o.en, o.ta)}</option>)}
+                          </select>
+                        </Field>
+                        <Field id={`cf-att-${i}-idNumber`} label={tr('ID number *', 'அடையாள எண் *')} error={e('idNumber')}>
+                          <input
+                            id={`cf-att-${i}-idNumber`}
+                            value={a.idNumber}
+                            disabled={!a.idType}
+                            autoComplete="off"
+                            placeholder={idOpt?.ph || ''}
+                            onChange={(ev) => setAttField(i, { idNumber: ev.target.value.replace(/[^A-Za-z0-9 -]/g, '').slice(0, 20) })}
+                            className={`${inputCls(!!e('idNumber'))} disabled:cursor-not-allowed disabled:bg-sand/30`}
+                          />
+                        </Field>
+                      </div>
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <Field id={`cf-att-${i}-doc`} label={tr('ID proof document *', 'அடையாளச் சான்று ஆவணம் *')} error={e('doc')} hint={tr('JPG, PNG or PDF, up to 5 MB.', 'JPG, PNG அல்லது PDF, 5 MB வரை.')}>
+                          <input key={`doc-${fileKey}-${i}`} id={`cf-att-${i}-doc`} type="file" accept="image/jpeg,image/png,application/pdf" onChange={(ev) => pickFile(i, 'doc', ev.target.files?.[0] || null)} className={fileCls} />
+                          <FilePreview file={a.doc} />
+                        </Field>
+                        <Field id={`cf-att-${i}-photo`} label={tr('Profile photo *', 'புகைப்படம் *')} error={e('photo')} hint={tr('A clear recent photo, face visible. JPG, PNG or WebP, up to 5 MB.', 'தெளிவான சமீபத்திய புகைப்படம். JPG, PNG அல்லது WebP, 5 MB வரை.')}>
+                          <input key={`photo-${fileKey}-${i}`} id={`cf-att-${i}-photo`} type="file" accept="image/jpeg,image/png,image/webp" onChange={(ev) => pickFile(i, 'photo', ev.target.files?.[0] || null)} className={fileCls} />
+                          <FilePreview file={a.photo} />
+                        </Field>
+                      </div>
+                    </div>
+                  );
+                })}
               </section>
 
               <section className="space-y-4">

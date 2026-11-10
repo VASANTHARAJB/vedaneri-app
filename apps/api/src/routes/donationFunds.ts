@@ -6,6 +6,7 @@ import crypto from 'crypto';
 import { pool } from '../db';
 import { authenticate } from '../middleware/auth';
 import { AuthenticatedRequest } from '../types';
+import { nextPanchangamDate } from '../panchangamDates';
 
 const router = Router();
 
@@ -60,21 +61,9 @@ function isValidYmd(s: string): boolean {
   return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
 }
 
+// The next saved calendar day that matches the fund's thithi or festival (thithi, typed festival text or automatic festival)
 async function nextTithiDate(trigger: string): Promise<string | null> {
-  if (!trigger) return null;
-  try {
-    const [rows]: any = await pool.query(
-      `SELECT DATE_FORMAT(calendar_date, '%Y-%m-%d') AS d
-       FROM panchangam_calendar
-       WHERE (thithi LIKE ? OR special_event LIKE ?) AND calendar_date >= CURDATE()
-       ORDER BY calendar_date ASC LIMIT 1`,
-      [`%${trigger}%`, `%${trigger}%`]
-    );
-    return rows && rows.length ? rows[0].d : null;
-  } catch (e) {
-    console.error('[DonationFunds] next tithi lookup failed:', e);
-    return null;
-  }
+  return nextPanchangamDate(trigger);
 }
 
 async function shapeRow(r: any) {

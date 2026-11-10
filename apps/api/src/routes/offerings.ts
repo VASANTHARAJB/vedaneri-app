@@ -6,6 +6,7 @@ import crypto from 'crypto';
 import { pool } from '../db';
 import { authenticate } from '../middleware/auth';
 import { AuthenticatedRequest } from '../types';
+import { findPanchangamDates, panchangamOptions } from '../panchangamDates';
 
 const router = Router();
 
@@ -131,22 +132,7 @@ router.get('/', async (_req: Request, res: Response) => {
         // If Monthly Tithi Seva (e.g., Monthly Skanda Shashti), find the NEXT upcoming date from panchangam_calendar
         if (recurrenceType === 'monthly_tithi' && tithiTrigger) {
           try {
-            const [panchangamRows]: any = await pool.query(
-              `SELECT 
-                DATE_FORMAT(calendar_date, '%Y-%m-%d') as calendar_date,
-                tamil_year,
-                tamil_month,
-                tamil_date,
-                thithi,
-                nakshatram,
-                special_event
-               FROM panchangam_calendar
-               WHERE (thithi LIKE ? OR special_event LIKE ?)
-                 AND calendar_date >= CURDATE()
-               ORDER BY calendar_date ASC
-               LIMIT 1`,
-              [`%${tithiTrigger}%`, `%${tithiTrigger}%`]
-            );
+            const panchangamRows = await findPanchangamDates(tithiTrigger, { limit: 1 });
 
             if (panchangamRows && panchangamRows.length > 0) {
               nextEventDate = panchangamRows[0].calendar_date;
@@ -214,7 +200,17 @@ router.get('/', async (_req: Request, res: Response) => {
 });
 
 // -------------------------------------------------------------
-// 3. GET UPCOMING 12 MONTH DATES FOR A RECURRING SEVA
+// 2b. THE PICK LIST OF THITHIS AND FESTIVALS (for the trigger field in the CMS)
+//     Every value here is a word the Panchangam Calendar really saves, so a seva can never be set to a name that finds no dates.
+// -------------------------------------------------------------
+router.get('/panchangam-options', (_req: Request, res: Response) => {
+  res.set('Cache-Control', 'public, max-age=3600');
+  return res.json({ success: true, ...panchangamOptions() });
+});
+
+// -------------------------------------------------------------
+// 3. GET THE COMING YEAR'S DATES FOR A RECURRING SEVA
+//    Every saved day in the next 366 days that matches the seva's thithi or festival.
 // -------------------------------------------------------------
 router.get('/:id/upcoming-dates', async (req: Request, res: Response) => {
   try {
@@ -229,23 +225,8 @@ router.get('/:id/upcoming-dates', async (req: Request, res: Response) => {
     const item = rows[0];
     const trigger = item.tithi_trigger || item.panchangam_tag || 'Sashti';
 
-    // Fetch the next 12 occurrences from panchangam_calendar
-    const [dates]: any = await pool.query(
-      `SELECT 
-        DATE_FORMAT(calendar_date, '%Y-%m-%d') as calendar_date,
-        tamil_year,
-        tamil_month,
-        tamil_date,
-        thithi,
-        nakshatram,
-        special_event
-       FROM panchangam_calendar
-       WHERE (thithi LIKE ? OR special_event LIKE ?)
-         AND calendar_date >= CURDATE()
-       ORDER BY calendar_date ASC
-       LIMIT 12`,
-      [`%${trigger}%`, `%${trigger}%`]
-    );
+    // Every matching saved day in the coming year (a fortnightly observance gives about 24, a monthly one about 12)
+    const dates = await findPanchangamDates(trigger, { withinDays: 366 });
 
     return res.json({
       success: true,

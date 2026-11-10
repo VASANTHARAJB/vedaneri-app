@@ -3,6 +3,7 @@ import type { Locale } from '@/lib/i18n';
 import type { Dictionary } from '@/lib/dictionary';
 import GlowLayer from './GlowLayer';
 import Reveal from './Reveal';
+import type { HeroLink } from './Hero';
 
 // Portrait: apps/web/public/images/swamiji-cutout.png  (any JPG or PNG photo works, about 800x1000, portrait)
 const FOUNDER_PHOTO = '/images/swamiji-cutout.png';
@@ -33,7 +34,18 @@ function Mandala() {
   );
 }
 
-export default function Founder({ locale, t }: { locale: Locale; t: Dictionary['founder'] }) {
+// photo and cta are optional: the CMS (Home Page) can replace the portrait and the button link.
+// The light on the palms is placed for the original portrait, so it is not drawn on a portrait uploaded in the CMS.
+export default function Founder({ locale, t, photo, cta }: { locale: Locale; t: Dictionary['founder']; photo?: string; cta?: HeroLink }) {
+  const toCta: HeroLink = cta ?? { href: `/${locale}/about`, external: false };
+  const ctaClass = 'group mt-7 inline-flex items-center gap-2 rounded-md bg-maroon px-6 py-3 font-semibold text-white shadow transition duration-300 hover:-translate-y-0.5 hover:shadow-lg';
+  const ctaInner = (
+    <>
+      {t.cta}
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
+        className="transition-transform duration-300 group-hover:translate-x-1"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+    </>
+  );
   return (
     <section aria-labelledby="founder-title" className="relative isolate overflow-hidden bg-white">
       <Mandala />
@@ -44,8 +56,8 @@ export default function Founder({ locale, t }: { locale: Locale; t: Dictionary['
           <div aria-hidden="true" className="absolute -inset-3 rounded-b-[2rem] rounded-t-[9999px] border border-saffron/50" />
           <div role="img" aria-label={t.photoAlt}
             className="relative aspect-[4/5] overflow-hidden rounded-b-[1.5rem] rounded-t-[9999px] border-[3px] border-saffron bg-cover bg-top shadow-[0_18px_50px_-12px_rgba(217,119,6,0.55)]"
-            style={{ backgroundImage: `url('${FOUNDER_PHOTO}'), ${PHOTO_FALLBACK}`, backgroundPosition: '50% 0%' }}>
-            <GlowLayer src={FOUNDER_PHOTO} points={PALM_POINTS} position="50% 0%" size={0.2} pickKey="founder" />
+            style={{ backgroundImage: `${photo ? `url('${photo}'), ` : ''}url('${FOUNDER_PHOTO}'), ${PHOTO_FALLBACK}`, backgroundPosition: '50% 0%' }}>
+            {!photo && <GlowLayer src={FOUNDER_PHOTO} points={PALM_POINTS} position="50% 0%" size={0.2} pickKey="founder" />}
           </div>
         </div>
 
@@ -64,20 +76,17 @@ export default function Founder({ locale, t }: { locale: Locale; t: Dictionary['
           <p className="mx-auto mt-5 max-w-2xl text-base text-charcoal/90 sm:text-lg lg:mx-0">{t.bio}</p>
 
           <ul className="mt-6 flex flex-wrap justify-center gap-2.5 lg:justify-start">
-            {t.facts.map((f) => (
-              <li key={f} className="inline-flex items-center gap-2 rounded-full border border-rose bg-white/80 px-4 py-1.5 text-sm font-semibold text-maroon backdrop-blur-sm">
+            {t.facts.map((f, i) => (
+              <li key={`${f}-${i}`} className="inline-flex items-center gap-2 rounded-full border border-rose bg-white/80 px-4 py-1.5 text-sm font-semibold text-maroon backdrop-blur-sm">
                 <span aria-hidden="true" className="h-1.5 w-1.5 rotate-45 bg-saffron" />
                 {f}
               </li>
             ))}
           </ul>
 
-          <Link href={`/${locale}/about`}
-            className="group mt-7 inline-flex items-center gap-2 rounded-md bg-maroon px-6 py-3 font-semibold text-white shadow transition duration-300 hover:-translate-y-0.5 hover:shadow-lg">
-            {t.cta}
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
-              className="transition-transform duration-300 group-hover:translate-x-1"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
-          </Link>
+          {toCta.external
+            ? <a href={toCta.href} className={ctaClass} {...(/^https?:/i.test(toCta.href) ? { target: '_blank', rel: 'noopener noreferrer' } : {})}>{ctaInner}</a>
+            : <Link href={toCta.href} className={ctaClass}>{ctaInner}</Link>}
         </Reveal>
       </div>
 

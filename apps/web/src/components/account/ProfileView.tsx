@@ -116,6 +116,8 @@ export default function ProfileView({ locale }: Props) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [profile, setProfile] = useState<any>({
+    id: '',
+    devotee_id: '',
     first_name: '',
     last_name: '',
     email: '',
@@ -203,15 +205,17 @@ export default function ProfileView({ locale }: Props) {
           if (d?.saved) setSavedIds({ panMasked: d.panMasked, aadhaarMasked: d.aadhaarMasked });
         }
       } catch (_) {
-        // The section simply shows the empty form
+        // Section remains empty
       }
     };
 
     fetchAll();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [locale, router]);
 
-  // Load the history the first time the tab opens (and again on Retry)
+  // Devotee identifier fallback resolver
+  const devoteeCode = profile?.devotee_id || (typeof profile?.id === 'string' && profile.id.startsWith('SDSS') ? profile.id : profile?.id || '');
+
+  // Load the history the first time the tab opens
   useEffect(() => {
     if (activeTab !== 'history' || historyLoaded) return;
     const token = readToken();
@@ -232,7 +236,6 @@ export default function ProfileView({ locale }: Props) {
       })
       .catch(() => setHistoryError(tr('Could not load your history right now.', 'வரலாற்றை இப்போது ஏற்ற இயலவில்லை.')))
       .finally(() => setHistoryLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, historyLoaded, historyTick]);
 
   const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -251,7 +254,6 @@ export default function ProfileView({ locale }: Props) {
     setError('');
   };
 
-  // Save profile and family details (PAN and Aadhaar are handled separately)
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
@@ -440,7 +442,6 @@ export default function ProfileView({ locale }: Props) {
       activeTab === key ? 'border-maroon text-maroon font-bold' : 'border-transparent text-charcoal/60 hover:text-charcoal'
     }`;
 
-  // ---------- History grouping ----------
   const KIND_LABEL: Record<Kind, string> = {
     seva_list: tr('Seva List', 'சேவை பட்டியல்'),
     seva_corpus: tr('Seva Corpus', 'சேவை மூலதனம்'),
@@ -516,9 +517,16 @@ export default function ProfileView({ locale }: Props) {
             </div>
 
             <div>
-              <h2 className="font-display text-2xl font-bold text-maroon leading-tight">
-                {profile?.first_name} {profile?.last_name}
-              </h2>
+              <div className="flex flex-wrap items-center gap-2.5">
+                <h2 className="font-display text-2xl font-bold text-maroon leading-tight">
+                  {profile?.first_name} {profile?.last_name}
+                </h2>
+                {devoteeCode && (
+                  <span className="inline-flex items-center rounded-md border border-saffron/50 bg-[#fef3c7] px-2.5 py-0.5 font-mono text-xs font-bold text-maroon shadow-xs">
+                    {devoteeCode}
+                  </span>
+                )}
+              </div>
               <p className="mt-0.5 text-xs font-medium text-charcoal/70">
                 {profile?.email} {profile?.phone ? `• ${profile.phone}` : ''}
               </p>
@@ -568,7 +576,17 @@ export default function ProfileView({ locale }: Props) {
         {activeTab === 'profile' && (
           <div className="mt-6 space-y-6">
             <form onSubmit={handleSave} className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2">
+              {/* Devotee ID Display */}
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div>
+                  <label className="mb-1 block text-xs font-bold text-charcoal">{tr('Devotee ID', 'பக்தர் எண் (Devotee ID)')}</label>
+                  <input
+                    type="text"
+                    disabled
+                    value={devoteeCode || '—'}
+                    className={`${inputClass} bg-[#f9f7f2] font-mono font-bold text-maroon opacity-90 cursor-not-allowed`}
+                  />
+                </div>
                 <div>
                   <label className="mb-1 block text-xs font-bold text-charcoal">{tr('First Name *', 'முதல் பெயர் *')}</label>
                   <input type="text" required value={profile?.first_name || ''} onChange={(e) => setProfile({ ...profile, first_name: e.target.value })} className={inputClass} />
@@ -816,7 +834,7 @@ export default function ProfileView({ locale }: Props) {
           </form>
         )}
 
-        {/* TAB: My Bookings & Donations (by category) */}
+        {/* TAB: My Bookings & Donations */}
         {activeTab === 'history' && (
           <div className="mt-6">
             {historyLoading ? (

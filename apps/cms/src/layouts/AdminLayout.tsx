@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import Sidebar, { NavTab } from '../components/Sidebar';
 import TopNav from '../components/TopNav';
 import { useAuth } from '../lib/auth';
+import { canOpen, homeSlug } from '../lib/access';
 
 const SLUG_TO_TAB: Record<string, NavTab> = {
   dashboard: 'overview',
@@ -12,22 +13,39 @@ const SLUG_TO_TAB: Record<string, NavTab> = {
   camps: 'camps',
   magazine: 'magazine',
   panchangam: 'panchangam',
+  'panchangam-calendar': 'panchangam-calendar',
   'page-home': 'page-home',
   'about-swami': 'about-swami',
   'about-ashramam': 'about-ashramam',
   'about-adhishtanam': 'about-adhishtanam',
   'about-vidyapitham': 'about-vidyapitham',
   'page-contact': 'page-contact',
+  'page-accommodation': 'page-accommodation',
   'discover-audio': 'discover-audio',
   'discover-video': 'discover-video',
   'discover-album': 'discover-album',
   'payments-dashboard': 'payments-dashboard',
-  'seva-orders': 'payment-sevas',
+  'seva-payments': 'payment-sevas',
   'payment-donations': 'payment-donations',
+  'payment-magazine': 'payment-magazine',
   'printing-labels': 'address-labels',
   devotees: 'devotee-details',
   'devotee-records': 'devotee-data',
+  'seva-register': 'seva-register',
+  'donation-register': 'donation-register',
+  'magazine-register': 'magazine-register',
+  'camp-register': 'camp-register',
+  'pos': 'pos-dashboard',
+  'pos-new-sale': 'pos-new-sale',
+  'pos-sales': 'pos-sales',
+  'pos-items': 'pos-items',
+  'pos-stock': 'pos-stock',
+  'pos-purchases': 'pos-purchases',
+  'pos-suppliers': 'pos-suppliers',
+  'pos-adjustments': 'pos-adjustments',
+  'pos-reports': 'pos-reports',
   settings: 'settings',
+  users: 'users',
 };
 
 const TAB_TO_SLUG: Record<NavTab, string> = {
@@ -38,22 +56,39 @@ const TAB_TO_SLUG: Record<NavTab, string> = {
   camps: 'camps',
   magazine: 'magazine',
   panchangam: 'panchangam',
+  'panchangam-calendar': 'panchangam-calendar',
   'page-home': 'page-home',
   'about-swami': 'about-swami',
   'about-ashramam': 'about-ashramam',
   'about-adhishtanam': 'about-adhishtanam',
   'about-vidyapitham': 'about-vidyapitham',
   'page-contact': 'page-contact',
+  'page-accommodation': 'page-accommodation',
   'discover-audio': 'discover-audio',
   'discover-video': 'discover-video',
   'discover-album': 'discover-album',
   'payments-dashboard': 'payments-dashboard',
-  'payment-sevas': 'seva-orders',
+  'payment-sevas': 'seva-payments',
   'payment-donations': 'payment-donations',
+  'payment-magazine': 'payment-magazine',
   'address-labels': 'printing-labels',
   'devotee-details': 'devotees',
   'devotee-data': 'devotee-records',
+  'seva-register': 'seva-register',
+  'donation-register': 'donation-register',
+  'magazine-register': 'magazine-register',
+  'camp-register': 'camp-register',
+  'pos-dashboard': 'pos',
+  'pos-new-sale': 'pos-new-sale',
+  'pos-sales': 'pos-sales',
+  'pos-items': 'pos-items',
+  'pos-stock': 'pos-stock',
+  'pos-purchases': 'pos-purchases',
+  'pos-suppliers': 'pos-suppliers',
+  'pos-adjustments': 'pos-adjustments',
+  'pos-reports': 'pos-reports',
   settings: 'settings',
+  users: 'users',
 };
 
 const TAB_TITLES: Record<NavTab, string> = {
@@ -63,23 +98,40 @@ const TAB_TITLES: Record<NavTab, string> = {
   donations: 'Donations',
   camps: 'Camps',
   magazine: 'Magazine',
-  panchangam: 'Panchangam',
+  panchangam: 'Panchangam Manager',
+  'panchangam-calendar': 'Tamil Calendar',
   'page-home': 'Home Page',
   'about-swami': 'Sri Swami Omkarananda',
   'about-ashramam': 'Ashramam',
   'about-adhishtanam': 'Adhishtanam',
   'about-vidyapitham': 'Vidyapitham',
   'page-contact': 'Contact Page',
+  'page-accommodation': 'Accommodation',
   'discover-audio': 'Audio',
   'discover-video': 'Video',
   'discover-album': 'Album',
   'payments-dashboard': 'Payments Dashboard',
-  'payment-sevas': 'Seva Orders',
+  'payment-sevas': 'Seva Payments',
   'payment-donations': 'Donation Payments',
+  'payment-magazine': 'Magazine Payments',
   'address-labels': 'Printing Labels',
-  'devotee-details': 'Devotees',
+  'devotee-details': 'Devotee Details',
   'devotee-data': 'Devotee Records',
+  'seva-register': 'Seva Register',
+  'donation-register': 'Donation Register',
+  'magazine-register': 'Magazine Register',
+  'camp-register': 'Camp Register',
+  'pos-dashboard': 'POS Dashboard',
+  'pos-new-sale': 'New Sale',
+  'pos-sales': 'Sales',
+  'pos-items': 'Items',
+  'pos-stock': 'Stock',
+  'pos-purchases': 'Purchases (Stock In)',
+  'pos-suppliers': 'Suppliers',
+  'pos-adjustments': 'Stock Adjustments',
+  'pos-reports': 'POS Reports',
   settings: 'Settings',
+  users: 'Users',
 };
 
 // Top-right quick action changes with the page
@@ -91,7 +143,10 @@ function quickActionFor(tab: NavTab): { label: string; path: string } {
     case 'camps':
       return { label: 'New Camp', path: '/camps?new=1' };
     case 'magazine':
+    case 'payment-magazine':
       return { label: 'New Plan', path: '/magazine?new=1' };
+    case 'payment-sevas':
+      return { label: 'Manage Sevas', path: '/sevas' };
     case 'discover-audio':
       return { label: 'New Audio', path: '/discover-audio?new=1' };
     case 'discover-video':
@@ -106,7 +161,7 @@ function quickActionFor(tab: NavTab): { label: string; path: string } {
 export default function AdminLayout() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
   const [infoPanel, setInfoPanel] = useState<'help' | 'profile' | null>(null);
 
@@ -118,17 +173,29 @@ export default function AdminLayout() {
     setInfoPanel(null);
   }, [location.pathname]);
 
+  const role = user?.role;
+  const allowedHere = canOpen(role, currentSlug);
+  const canSee = (tab: NavTab) => canOpen(role, TAB_TO_SLUG[tab] || tab);
+
   const handleSelectTab = (tab: NavTab) => {
     const slug = TAB_TO_SLUG[tab] || tab;
     navigate(`/${slug}`);
   };
 
-  const quick = quickActionFor(activeTab);
+  const quickRaw = quickActionFor(activeTab);
+  // The top-right shortcut must lead to a page this login can open
+  const quickSlug = quickRaw.path.replace(/^\//, '').split('?')[0];
+  const quick = canOpen(role, quickSlug) ? quickRaw : { label: 'My home page', path: `/${homeSlug(role)}` };
   const crumbs = activeTab.startsWith('discover-')
     ? ['Discover', TAB_TITLES[activeTab]]
     : activeTab.startsWith('about-')
       ? ['About', TAB_TITLES[activeTab]]
       : [TAB_TITLES[activeTab] || 'Dashboard'];
+
+  if (loading) return <div className="p-8 text-sm text-slate-500">Loading...</div>;
+  if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  // A login that may not open this page is sent to its own home page
+  if (!allowedHere) return <Navigate to={`/${homeSlug(role)}`} replace />;
 
   return (
     <div className="flex min-h-screen bg-white font-sans text-[#3b0d0d] antialiased selection:bg-[#fde7b0] selection:text-[#3b0d0d]">
@@ -137,6 +204,7 @@ export default function AdminLayout() {
         onSelectTab={handleSelectTab}
         collapsed={collapsed}
         onToggleCollapse={() => setCollapsed((c) => !c)}
+        canSee={canSee}
       />
 
       <div className="flex min-w-0 flex-1 flex-col">

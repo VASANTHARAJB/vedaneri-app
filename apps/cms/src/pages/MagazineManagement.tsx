@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 
 const API_BASE = (import.meta as any).env?.VITE_API_URL || 'http://localhost:4000/api/v1';
 const API = `${API_BASE}/magazine`;
+const FILES = API_BASE.replace(/\/api\/v1\/?$/, '');
 
 function getToken(): string {
   for (const k of ['token', 'admin_token', 'auth_token', 'accessToken', 'cms_token']) {
@@ -51,6 +52,12 @@ type Delivery = 'print' | 'digital' | 'both';
 type PStatus = 'draft' | 'published';
 interface Plan { id: string; name_en: string; name_ta: string | null; description_en: string | null; description_ta: string | null; features_en: string | null; features_ta: string | null; badge_en: string | null; badge_ta: string | null; duration_months: number; delivery: Delivery; price: number; pay_account: Acct; status: PStatus; sort_order: number; active_subs: number }
 interface Sub { id: number; plan_name: string; delivery: Delivery; duration_months: number; amount: number; payment_mode: string; first_name: string; last_name: string; email: string; phone: string | null; address: string | null; city: string | null; state: string | null; pincode: string | null; start_date: string | null; end_date: string | null; status: 'PENDING' | 'ACTIVE' | 'EXPIRED'; receipt_no: string | null }
+
+interface Issue { id: string; title_en: string; title_ta: string | null; issue_month: number; issue_year: number; cover_url: string | null; status: PStatus; has_pdf: number }
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const MAX_FILE_MB = 40;
+const emptyIssue = () => ({ title_en: '', title_ta: '', issue_month: String(new Date().getMonth() + 1), issue_year: String(new Date().getFullYear()), status: 'draft' as PStatus });
+const fmtSize = (n: number) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 
 const DELIVERY_LABEL: Record<Delivery, string> = { print: 'Printed copy', digital: 'Digital only', both: 'Print and digital' };
 const ACCT_LABEL: Record<Acct, string> = { seva: 'Seva account (SRI DAKSHINAMURTI SEVA SAMITI)', donation: 'Donation account (VEDANTA SASTHRA PRACHARA TRUST)' };
@@ -139,20 +146,57 @@ const CSS = `
 .mg .per small{display:block;font-size:11px;font-weight:600;margin-top:2px;color:var(--mut) !important;}
 .mg .per:hover{border-color:var(--p) !important;}
 .mg .per.on{border-color:var(--p) !important;background:#f6e7e7 !important;color:var(--p) !important;}
+.mg .cover{width:44px;height:60px;border-radius:6px;object-fit:cover;background:#f1f2f4 !important;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--mut) !important;}
+.mg .upbox{display:flex;align-items:center;gap:14px;flex-wrap:wrap;border:1px dashed #cfd4dc;border-radius:10px;padding:12px;margin-bottom:14px;}
+.mg .upbox .cover{width:72px;height:96px;}
+.mg .pdfname{font-weight:700;word-break:break-all;}
+.mg .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;}
 `;
 
 type LoadErr = { message: string; detail?: string } | null;
 
+// A text box in English with its Tamil twin and an Auto-fill button
+function IssueBi({ id, label, en, ta, onEn, onTa, required, error }: {
+  id: string; label: string; en: string; ta: string; onEn: (v: string) => void; onTa: (v: string) => void; required?: boolean; error?: string;
+}) {
+  const [busy, setBusy] = useState(false);
+  async function fill() {
+    if (!en.trim()) return;
+    setBusy(true);
+    const out = await transliterate(en);
+    setBusy(false);
+    if (out !== null) onTa(out);
+  }
+  return (
+    <div className="g2">
+      <div>
+        <label className="lbl" htmlFor={`${id}-en`}>{label} (English){required ? ' *' : ''}</label>
+        <input id={`${id}-en`} value={en} onChange={(e) => onEn(e.target.value)} className={`inp${error ? ' bad' : ''}`} />
+        {error && <span role="alert" className="err">{error}</span>}
+      </div>
+      <div>
+        <div className="lblrow">
+          <label className="lbl" htmlFor={`${id}-ta`}>{label} (தமிழ்)</label>
+          <button type="button" className="btn link" disabled={busy || !en.trim()} onClick={fill}>{busy ? 'Converting...' : 'Auto-fill'}</button>
+        </div>
+        <input id={`${id}-ta`} value={ta} onChange={(e) => onTa(e.target.value)} className="inp" />
+      </div>
+    </div>
+  );
+}
+
 export default function MagazineManagement() {
   const [params, setParams] = useSearchParams();
-  const [tab, setTab] = useState<'plans' | 'subs'>('plans');
+  const [tab, setTab] = useState<'plans' | 'subs' | 'issues'>('plans');
   const [plans, setPlans] = useState<Plan[]>([]);
   const [subs, setSubs] = useState<Sub[]>([]);
+  const [issues, setIssues] = useState<Issue[]>([]);
   const [loading, setLoading] = useState(true);
-  const [loadErr, setLoadErr] = useState<{ plans: LoadErr; subs: LoadErr }>({ plans: null, subs: null });
+  const [loadErr, setLoadErr] = useState<{ plans: LoadErr; subs: LoadErr; issues: LoadErr }>({ plans: null, subs: null, issues: null });
   const [notice, setNotice] = useState<{ tone: 'ok' | 'err'; text: string } | null>(null);
   const [q, setQ] = useState('');
   const [fPlan, setFPlan] = useState<'all' | PStatus>('all');
+  const [fIss, setFIss] = useState<'all' | PStatus>('all');
   const [fSub, setFSub] = useState<'all' | 'ACTIVE' | 'EXPIRED' | 'PENDING' | 'soon'>('all');
 
   // Plan drawer
@@ -160,6 +204,15 @@ export default function MagazineManagement() {
   const [pEdit, setPEdit] = useState<Plan | null>(null);
   const [pForm, setPForm] = useState({ ...emptyPlan });
   const [customDur, setCustomDur] = useState(false);
+
+  // Issue (magazine book) drawer
+  const [iOpen, setIOpen] = useState(false);
+  const [iEdit, setIEdit] = useState<Issue | null>(null);
+  const [iForm, setIForm] = useState(emptyIssue());
+  const [iFiles, setIFiles] = useState<{ cover: File | null; pdf: File | null; removeCover: boolean }>({ cover: null, pdf: null, removeCover: false });
+  const [coverPreview, setCoverPreview] = useState('');
+  const [delIss, setDelIss] = useState<{ id: string; name: string } | null>(null);
+  const [openingPdf, setOpeningPdf] = useState<string | null>(null);
 
   // Manual subscriber drawer
   const [mOpen, setMOpen] = useState(false);
@@ -192,11 +245,12 @@ export default function MagazineManagement() {
       if (!res.ok) throw { message: body.message || `The server returned an error (${res.status}).`, detail: body.detail };
       return body;
     };
-    const [b, c] = await Promise.allSettled([get('/admin/plans'), get('/admin/subscriptions')]);
+    const [b, c, ie] = await Promise.allSettled([get('/admin/plans'), get('/admin/subscriptions'), get('/admin/issues')]);
     const asErr = (r: PromiseSettledResult<any>): LoadErr => (r.status === 'rejected' ? { message: r.reason?.message || 'Could not load.', detail: r.reason?.detail } : null);
     if (b.status === 'fulfilled') setPlans(b.value.plans || []);
     if (c.status === 'fulfilled') setSubs(c.value.subscriptions || []);
-    setLoadErr({ plans: asErr(b), subs: asErr(c) });
+    if (ie.status === 'fulfilled') setIssues(ie.value.issues || []);
+    setLoadErr({ plans: asErr(b), subs: asErr(c), issues: asErr(ie) });
     setLoading(false);
   }, []);
   useEffect(() => { load(); }, [load]);
@@ -313,6 +367,95 @@ export default function MagazineManagement() {
     if (auto && !touched.name_ta) runTa('name_ta', newName, 300);
   }
 
+  // ----- issues (magazine books shown in the website archive) -----
+  useEffect(() => {
+    if (!iFiles.cover) { setCoverPreview(''); return; }
+    const u = URL.createObjectURL(iFiles.cover);
+    setCoverPreview(u);
+    return () => URL.revokeObjectURL(u);
+  }, [iFiles.cover]);
+
+  const openNewIssue = () => { setIEdit(null); setIForm(emptyIssue()); setIFiles({ cover: null, pdf: null, removeCover: false }); setErrs({}); setIOpen(true); };
+  const openEditIssue = (i: Issue) => {
+    setIEdit(i);
+    setIForm({ title_en: i.title_en, title_ta: i.title_ta || '', issue_month: String(i.issue_month), issue_year: String(i.issue_year), status: i.status });
+    setIFiles({ cover: null, pdf: null, removeCover: false });
+    setErrs({}); setIOpen(true);
+  };
+  const setI = (k: string, v: string) => { setIForm((f) => ({ ...f, [k]: v })); setErrs((e) => ({ ...e, [k]: '', form: '' })); };
+
+  function chooseFile(kind: 'cover' | 'pdf', file?: File) {
+    if (!file) return;
+    if (file.size > MAX_FILE_MB * 1024 * 1024) { setErrs((e) => ({ ...e, [kind]: `This file is ${fmtSize(file.size)}. The limit is ${MAX_FILE_MB} MB.` })); return; }
+    if (kind === 'pdf' && !(file.type === 'application/pdf' || /\.pdf$/i.test(file.name))) { setErrs((e) => ({ ...e, pdf: 'Choose a PDF file.' })); return; }
+    if (kind === 'cover' && !/^image\/(jpeg|png|webp)$/.test(file.type)) { setErrs((e) => ({ ...e, cover: 'The cover must be a JPG, PNG or WebP image.' })); return; }
+    setErrs((e) => ({ ...e, [kind]: '', form: '' }));
+    setIFiles((f) => (kind === 'cover' ? { ...f, cover: file, removeCover: false } : { ...f, pdf: file }));
+  }
+
+  async function saveIssue(e: React.FormEvent) {
+    e.preventDefault();
+    if (saving) return;
+    const x: Record<string, string> = {};
+    if (!iForm.title_en.trim()) x.title_en = 'Enter the title';
+    const m = Number(iForm.issue_month), y = Number(iForm.issue_year);
+    if (!(m >= 1 && m <= 12)) x.issue_month = 'Choose the month';
+    if (!(y >= 2000 && y <= 2100)) x.issue_year = 'Enter a valid year';
+    if (!iEdit && !iFiles.pdf) x.pdf = 'Choose the magazine PDF';
+    setErrs(x);
+    if (Object.keys(x).length) return;
+    setSaving(true);
+    try {
+      const body = new FormData();
+      body.append('title_en', iForm.title_en.trim());
+      body.append('title_ta', iForm.title_ta.trim());
+      body.append('issue_month', iForm.issue_month);
+      body.append('issue_year', iForm.issue_year);
+      body.append('status', iForm.status);
+      if (iFiles.cover) body.append('cover', iFiles.cover);
+      if (iFiles.pdf) body.append('pdf', iFiles.pdf);
+      if (iEdit && iFiles.removeCover && !iFiles.cover) body.append('remove_cover', 'true');
+      // No Content-Type here: the browser adds it with the file boundary
+      const res = await fetch(iEdit ? `${API}/admin/issues/${iEdit.id}` : `${API}/admin/issues`, { method: iEdit ? 'PUT' : 'POST', headers: authHeader(), body });
+      const d = await readJson(res);
+      if (!res.ok) { setErrs({ form: failText(d, 'Could not save the issue.') }); return; }
+      setIOpen(false);
+      flash('ok', iEdit ? 'Issue saved.' : iForm.status === 'published' ? 'Issue added and published in the website archive.' : 'Issue added as a draft.');
+      load();
+    } catch { setErrs({ form: 'Network error. The file may be too large or the connection dropped. Please try again.' }); } finally { setSaving(false); }
+  }
+
+  async function setIssueStatus(id: string, status: string) {
+    try {
+      const res = await fetch(`${API}/admin/issues/${id}/status`, { method: 'PATCH', headers: { ...authHeader(), 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) });
+      if (!res.ok) throw new Error(failText(await readJson(res), 'Could not change the status.'));
+      setIssues((l) => l.map((x) => (x.id === id ? { ...x, status: status as PStatus } : x)));
+    } catch (e: any) { flash('err', e?.message || 'Could not change the status.'); }
+  }
+
+  async function doDeleteIssue() {
+    if (!delIss) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`${API}/admin/issues/${delIss.id}`, { method: 'DELETE', headers: authHeader() });
+      if (!res.ok) throw new Error(failText(await readJson(res), 'Could not delete.'));
+      flash('ok', 'Issue deleted.');
+      setDelIss(null); load();
+    } catch (e: any) { setDelIss(null); flash('err', e?.message || 'Could not delete.'); } finally { setDeleting(false); }
+  }
+
+  // The PDF is private, so it is fetched with the admin login and opened from memory
+  async function openIssuePdf(id: string) {
+    setOpeningPdf(id);
+    try {
+      const res = await fetch(`${API}/admin/issues/${id}/pdf`, { headers: authHeader() });
+      if (!res.ok) throw new Error();
+      const url = URL.createObjectURL(await res.blob());
+      window.open(url, '_blank', 'noopener');
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch { flash('err', 'The PDF could not be opened.'); } finally { setOpeningPdf(null); }
+  }
+
   const failText = (d: any, fallback: string) => `${d.message || fallback}${d.detail ? ` (${d.detail})` : ''}`;
 
   // ----- save -----
@@ -394,13 +537,15 @@ export default function MagazineManagement() {
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
-      if (delAsk) { if (!deleting) setDelAsk(null); }
+      if (delIss) { if (!deleting) setDelIss(null); }
+      else if (iOpen) { if (!saving) setIOpen(false); }
+      else if (delAsk) { if (!deleting) setDelAsk(null); }
       else if (pOpen) { if (!saving) setPOpen(false); }
       else if (mOpen) { if (!saving) setMOpen(false); }
     };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
-  }, [delAsk, deleting, pOpen, mOpen, saving]);
+  }, [delAsk, delIss, deleting, pOpen, mOpen, iOpen, saving]);
 
   // ----- derived -----
   const soonEnd = addDaysStr(today, 30);
@@ -418,7 +563,41 @@ export default function MagazineManagement() {
   }), [subs, fSub, t]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const inp = (k: string) => `inp${errs[k] ? ' bad' : ''}`;
-  const currentErr = tab === 'plans' ? loadErr.plans : loadErr.subs;
+  const currentErr = tab === 'plans' ? loadErr.plans : tab === 'issues' ? loadErr.issues : loadErr.subs;
+  const nIssPub = issues.filter((i) => i.status === 'published').length;
+  const issuesShown = issues.filter((i) => (fIss === 'all' || i.status === fIss) && (!t || `${i.title_en} ${i.title_ta || ''} ${MONTHS[i.issue_month - 1] || ''} ${i.issue_year}`.toLowerCase().includes(t)));
+  const issuesView = issuesShown.length === 0 ? (
+    <div className="empty">
+      <p style={{ fontSize: 16, fontWeight: 800 }}>{issues.length === 0 ? 'No magazine issues yet' : 'No issue matches this filter'}</p>
+      {issues.length === 0 && <p className="mut" style={{ marginTop: 4 }}>Upload a cover and the PDF, then publish it to show it in the website archive.</p>}
+      {issues.length === 0 && <div style={{ marginTop: 16 }}><button type="button" className="btn primary" onClick={openNewIssue}>+ Add the first issue</button></div>}
+    </div>
+  ) : (
+    <div className="tblwrap">
+      <table className="tbl" style={{ minWidth: 860 }}>
+        <thead><tr><th>Cover</th><th>Issue</th><th>Month</th><th>PDF</th><th>Status</th><th style={{ textAlign: 'right' }}>Actions</th></tr></thead>
+        <tbody>
+          {issuesShown.map((i) => (
+            <tr key={i.id}>
+              <td>{i.cover_url ? <img className="cover" src={`${FILES}${i.cover_url}`} alt="" /> : <div className="cover">No cover</div>}</td>
+              <td><strong>{i.title_en}</strong>{i.title_ta && <span className="mut" style={{ display: 'block' }}>{i.title_ta}</span>}</td>
+              <td style={{ whiteSpace: 'nowrap' }}>{MONTHS[i.issue_month - 1]} {i.issue_year}</td>
+              <td>{Number(i.has_pdf) ? <button type="button" className="btn sm" disabled={openingPdf === i.id} onClick={() => openIssuePdf(i.id)}>{openingPdf === i.id ? 'Opening...' : 'Open PDF'}</button> : <span className="mut">Not uploaded</span>}</td>
+              <td>
+                <select value={i.status} onChange={(e) => setIssueStatus(i.id, e.target.value)} aria-label={`Status of ${i.title_en}`} className={`pill ${i.status}`}>
+                  <option value="draft">draft</option><option value="published">published</option>
+                </select>
+              </td>
+              <td><div className="acts">
+                <button type="button" className="btn sm" onClick={() => openEditIssue(i)}>Edit</button>
+                <button type="button" className="btn sm dng" onClick={() => setDelIss({ id: i.id, name: i.title_en })}>Delete</button>
+              </div></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
   const errBox = (e: NonNullable<LoadErr>) => (
     <div role="alert" className="empty">
       <p style={{ fontSize: 15, fontWeight: 800 }}>This list could not be loaded</p>
@@ -438,7 +617,9 @@ export default function MagazineManagement() {
         </div>
         {tab === 'subs'
           ? <button type="button" className="btn primary" onClick={openManual} disabled={plans.length === 0}>+ Add subscriber</button>
-          : <button type="button" className="btn primary" onClick={openNewPlan}>+ New Plan</button>}
+          : tab === 'issues'
+            ? <button type="button" className="btn primary" onClick={openNewIssue}>+ New issue</button>
+            : <button type="button" className="btn primary" onClick={openNewPlan}>+ New Plan</button>}
       </div>
 
       {notice && (
@@ -458,6 +639,7 @@ export default function MagazineManagement() {
         <div className="tabs">
           <button type="button" className={`tab${tab === 'plans' ? ' on' : ''}`} onClick={() => setTab('plans')}>Subscription plans ({plans.length})</button>
           <button type="button" className={`tab${tab === 'subs' ? ' on' : ''}`} onClick={() => setTab('subs')}>Subscribers ({subs.length})</button>
+          <button type="button" className={`tab${tab === 'issues' ? ' on' : ''}`} onClick={() => setTab('issues')}>Magazine issues ({issues.length})</button>
         </div>
 
         <div className="toolbar">
@@ -465,6 +647,13 @@ export default function MagazineManagement() {
             <>
               {([['all', `All ${plans.length}`], ['published', `Published ${nPub}`], ['draft', `Draft ${nDraft}`]] as const).map(([k, label]) => (
                 <button key={k} type="button" className={`chip${fPlan === k ? ' on' : ''}`} onClick={() => setFPlan(k)}>{label}</button>
+              ))}
+            </>
+          )}
+          {tab === 'issues' && (
+            <>
+              {([['all', `All ${issues.length}`], ['published', `Published ${nIssPub}`], ['draft', `Draft ${issues.length - nIssPub}`]] as const).map(([k, label]) => (
+                <button key={k} type="button" className={`chip${fIss === k ? ' on' : ''}`} onClick={() => setFIss(k)}>{label}</button>
               ))}
             </>
           )}
@@ -490,6 +679,7 @@ export default function MagazineManagement() {
         {loading ? (
           <div>{[0, 1, 2].map((i) => <div key={i} className="skel" />)}</div>
         ) : currentErr ? errBox(currentErr)
+        : tab === 'issues' ? issuesView
         : tab === 'plans' ? (
           plansShown.length === 0 ? (
             <div className="empty">
@@ -718,6 +908,100 @@ export default function MagazineManagement() {
               <button type="submit" className="btn primary" disabled={saving}>{saving ? 'Saving...' : mPlan ? `Confirm ₹${mPlan.price.toLocaleString('en-IN')} received` : 'Add subscriber'}</button>
             </div>
           </form>
+        </div>
+      )}
+
+      {/* Magazine issue (new / edit): cover, PDF, publish */}
+      {iOpen && (
+        <div className="ov" onClick={() => !saving && setIOpen(false)}>
+          <form onSubmit={saveIssue} noValidate onClick={(e) => e.stopPropagation()} className="drawer">
+            <div className="dh">
+              <div><h2 style={{ fontSize: 18, fontWeight: 800 }}>{iEdit ? 'Edit magazine issue' : 'New magazine issue'}</h2><p className="mut">Fields marked * are required. A published issue shows in the Digital archive on the Magazine page.</p></div>
+              <button type="button" className="btn" onClick={() => setIOpen(false)}>Close</button>
+            </div>
+            <div className="db">
+              {errs.form && <div role="alert" className="alert bad">{errs.form}</div>}
+
+              <h3 className="sech">Cover photo</h3>
+              <div className="upbox">
+                {coverPreview
+                  ? <img className="cover" src={coverPreview} alt="" />
+                  : iEdit?.cover_url && !iFiles.removeCover ? <img className="cover" src={`${FILES}${iEdit.cover_url}`} alt="" /> : <div className="cover">No cover</div>}
+                <div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <label className="btn sm" style={{ cursor: 'pointer' }}>{iFiles.cover || (iEdit?.cover_url && !iFiles.removeCover) ? 'Change cover' : 'Choose cover'}
+                      <input type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={(e) => { chooseFile('cover', e.target.files?.[0]); e.target.value = ''; }} />
+                    </label>
+                    {(iFiles.cover || (iEdit?.cover_url && !iFiles.removeCover)) && (
+                      <button type="button" className="btn sm" onClick={() => setIFiles((f) => ({ ...f, cover: null, removeCover: !!iEdit?.cover_url }))}>Remove</button>
+                    )}
+                  </div>
+                  <p className="hint mut">The front page of the magazine (JPG, PNG or WebP, up to {MAX_FILE_MB} MB). Without a cover the website shows a plain maroon card with the title.</p>
+                  {iFiles.cover && <p className="hint mut">Selected: {iFiles.cover.name} ({fmtSize(iFiles.cover.size)}). It is saved when you press the Save button.</p>}
+                  {errs.cover && <span role="alert" className="err">{errs.cover}</span>}
+                </div>
+              </div>
+
+              <h3 className="sech">Magazine PDF {iEdit ? '' : '*'}</h3>
+              <div className="upbox">
+                <div>
+                  {iFiles.pdf
+                    ? <p><span className="pdfname">{iFiles.pdf.name}</span> · {fmtSize(iFiles.pdf.size)} <span className="mut">(saved when you press the Save button)</span></p>
+                    : iEdit && Number(iEdit.has_pdf) ? <p className="mut">A PDF is already saved for this issue.</p> : <p className="mut">No PDF chosen yet.</p>}
+                  <div style={{ marginTop: 8 }}>
+                    <label className="btn sm" style={{ cursor: 'pointer' }}>{iFiles.pdf || (iEdit && Number(iEdit.has_pdf)) ? 'Replace PDF' : 'Choose PDF'}
+                      <input type="file" accept="application/pdf,.pdf" className="sr-only" onChange={(e) => { chooseFile('pdf', e.target.files?.[0]); e.target.value = ''; }} />
+                    </label>
+                  </div>
+                  <p className="hint mut">PDF only, up to {MAX_FILE_MB} MB. Visitors must sign in to read or download it.</p>
+                  {errs.pdf && <span role="alert" className="err">{errs.pdf}</span>}
+                </div>
+              </div>
+
+              <h3 className="sech">Details</h3>
+              <IssueBi id="i-title" label="Title" required en={iForm.title_en} ta={iForm.title_ta} onEn={(v) => setI('title_en', v)} onTa={(v) => setI('title_ta', v)} error={errs.title_en} />
+              <div className="g2">
+                <div>
+                  <label className="lbl" htmlFor="i-month">Issue month *</label>
+                  <select id="i-month" value={iForm.issue_month} onChange={(e) => setI('issue_month', e.target.value)} className={inp('issue_month')}>
+                    {MONTHS.map((m, n) => <option key={m} value={String(n + 1)}>{m}</option>)}
+                  </select>
+                  {errs.issue_month && <span role="alert" className="err">{errs.issue_month}</span>}
+                </div>
+                <div>
+                  <label className="lbl" htmlFor="i-year">Issue year *</label>
+                  <input id="i-year" type="number" min="2000" max="2100" value={iForm.issue_year} onChange={(e) => setI('issue_year', e.target.value)} className={inp('issue_year')} />
+                  {errs.issue_year && <span role="alert" className="err">{errs.issue_year}</span>}
+                </div>
+              </div>
+              <p className="hint mut" style={{ marginTop: -6, marginBottom: 14 }}>Newest issues are shown first on the website.</p>
+
+              <h3 className="sech">Visibility</h3>
+              <div>
+                <label className="lbl" htmlFor="i-st">Status</label>
+                <select id="i-st" value={iForm.status} onChange={(e) => setI('status', e.target.value)} className="inp">
+                  <option value="draft">Draft (hidden on the website)</option><option value="published">Published (shown in the website archive)</option>
+                </select>
+              </div>
+            </div>
+            <div className="df">
+              <button type="button" className="btn" disabled={saving} onClick={() => setIOpen(false)}>Cancel</button>
+              <button type="submit" className="btn primary" disabled={saving}>{saving ? 'Uploading and saving...' : iEdit ? 'Save changes' : iForm.status === 'published' ? 'Save and publish' : 'Save issue'}</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {delIss && (
+        <div className="ov mid" onClick={() => !deleting && setDelIss(null)}>
+          <div className="modal" role="alertdialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+            <h2 style={{ fontSize: 17, fontWeight: 800 }}>Delete this issue?</h2>
+            <p className="mut" style={{ marginTop: 8 }}>{delIss.name}. It is removed from the website and its cover and PDF are deleted from the server. This cannot be undone.</p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20 }}>
+              <button type="button" className="btn" disabled={deleting} onClick={() => setDelIss(null)}>Cancel</button>
+              <button type="button" className="btn dfill" disabled={deleting} onClick={doDeleteIssue}>{deleting ? 'Deleting...' : 'Yes, delete'}</button>
+            </div>
+          </div>
         </div>
       )}
 

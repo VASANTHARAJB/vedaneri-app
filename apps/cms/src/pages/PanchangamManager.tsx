@@ -1,7 +1,9 @@
 'use client';
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useAuth } from '../lib/auth';
+import { authHeader } from './DiscoverKit';
+import PanchangamSuggestModal, { type SaveItem, type SuggestRow } from './PanchangamSuggestModal';
 import {
   TAMIL_MONTHS,
   COMMON_THITHIS,
@@ -35,20 +37,9 @@ const DEFAULT_TAMIL_YEARS: TamilYearOption[] = [
   { id: 'keelaka', name: 'Keelaka (கீலக)', englishSpan: '2028 - 2029' },
 ];
 
-const TAMIL_MONTH_CONFIG: Record<string, { mmdd: string; length: number; isNextYear?: boolean }> = {
-  'Chithirai (சித்திரை)': { mmdd: '04-14', length: 31 },
-  'Vaikasi (வைகாசி)': { mmdd: '05-15', length: 31 },
-  'Aani (ஆனி)': { mmdd: '06-15', length: 32 },
-  'Aadi (ஆடி)': { mmdd: '07-17', length: 31 },
-  'Aavani (ஆவணி)': { mmdd: '08-18', length: 31 },
-  'Purattasi (புரட்டாசி)': { mmdd: '09-18', length: 31 },
-  'Iyppasi (ஐப்பசி)': { mmdd: '10-18', length: 30 },
-  'Karthigai (கார்த்திகை)': { mmdd: '11-17', length: 30 },
-  'Margazhi (மார்கழி)': { mmdd: '12-16', length: 30 },
-  'Thai (தை)': { mmdd: '01-15', length: 30, isNextYear: true },
-  'Maasi (மாசி)': { mmdd: '02-13', length: 30, isNextYear: true },
-  'Panguni (பங்குனி)': { mmdd: '03-15', length: 30, isNextYear: true },
-};
+// The English start date and the number of days of every Tamil month are asked from the server (GET /panchangam/month-span),
+// which works them out from the Sun's position. They are not typed into this page any more, because the months are 29 to 32 days long
+// and the lengths change a little from year to year.
 
 const WEEKDAYS = [
   { en: 'Sunday', ta: 'ஞாயிறு', short: 'ஞா' },
@@ -61,6 +52,10 @@ const WEEKDAYS = [
 ];
 
 type ViewMode = 'grid' | 'agenda';
+
+// A 401/403 from the API means the login has expired; say so instead of showing a raw server reply.
+const loginMessage = (status: number): string =>
+  status === 401 || status === 403 ? 'Your login has expired. Please sign in again' : '';
 
 const splitName = (full: string) => {
   const i = full.indexOf(' (');
@@ -75,7 +70,9 @@ export default function PanchangamPage() {
   const [tamilYears, setTamilYears] = useState<TamilYearOption[]>(DEFAULT_TAMIL_YEARS);
   const [selectedYear, setSelectedYear] = useState<string>('Parabhava (பராபவ)');
   const [selectedMonth, setSelectedMonth] = useState<string>('Iyppasi (ஐப்பசி)');
-  const [monthStartDate, setMonthStartDate] = useState<string>('2026-10-18');
+  const [monthStartDate, setMonthStartDate] = useState<string>('');
+  const [monthLength, setMonthLength] = useState<number>(30);
+  const [spanReady, setSpanReady] = useState<boolean>(false);
 
   const [activeFilter, setActiveFilter] = useState<'all' | 'special'>('all');
   const [view, setView] = useState<ViewMode>('grid');
@@ -99,6 +96,11 @@ export default function PanchangamPage() {
     special_event: '',
   });
 
+  // Panchangam API (3rd-party) state
+  const [isFetchingApi, setIsFetchingApi] = useState(false);
+  const [apiNote, setApiNote] = useState<string | null>(null);
+  const [isSuggestOpen, setIsSuggestOpen] = useState(false);
+
   // Add Year Modal State
   const [isAddYearModalOpen, setIsAddYearModalOpen] = useState(false);
   const [newYearName, setNewYearName] = useState('');
@@ -106,7 +108,7 @@ export default function PanchangamPage() {
 
   // 1. Fetch available Tamil Years from Database
   useEffect(() => {
-    fetch(`${API_BASE}/panchangam/years`)
+    fetch(`${API_BASE}/panchangam/years`, { headers: { ...authHeader() } })
       .then((r) => r.json())
       .then((data) => {
         if (data.years && data.years.length > 0) {
@@ -116,60 +118,82 @@ export default function PanchangamPage() {
       .catch((e) => console.error('Failed to load years from DB:', e));
   }, [API_BASE]);
 
-  // 2. Synchronize English Start Date whenever Year or Month switches
+  // 2. Ask the server for the real English start date and length of the chosen Tamil month
   useEffect(() => {
     const currentYearObj = tamilYears.find((y) => y.name === selectedYear);
-    const span = currentYearObj?.englishSpan || '';
-    const match = span.match(/(\d{4})/);
-    const startYear = match ? parseInt(match[1], 10) : 2026;
-
-    const monthCfg = TAMIL_MONTH_CONFIG[selectedMonth];
-    if (monthCfg) {
-      const yearToUse = monthCfg.isNextYear ? startYear + 1 : startYear;
-      setMonthStartDate(`${yearToUse}-${monthCfg.mmdd}`);
+    const match = (currentYearObj?.englishSpan || '').match(/(\d{4})/);
+    if (!match) {
+      setSpanReady(false);
+      setMonthStartDate('');
+      setToast({ message: 'This Tamil year has no English span (for example "2026 - 2027"), so its dates cannot be worked out', type: 'error' });
+      return;
     }
-  }, [selectedYear, selectedMonth, tamilYears]);
-
-  // 3. Fetch Month Data & strictly replace state
-  useEffect(() => {
-    const fetchMonthFromDb = async () => {
-      try {
-        const res = await fetch(
-          `${API_BASE}/panchangam/month?year=${encodeURIComponent(selectedYear.trim())}&month=${encodeURIComponent(selectedMonth.trim())}`
-        );
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          throw new Error(err.message || 'Failed to fetch month data');
-        }
-        const json = await res.json();
-
-        // Complete state replacement indexed strictly by numeric tamil_date
-        const cleanMap: Record<number, ExtendedPanchangamEntry> = {};
-        (json.entries || []).forEach((row: any) => {
-          cleanMap[Number(row.tamil_date)] = {
-            id: row.id,
-            calendar_date: row.calendar_date,
-            tamil_year: row.tamil_year,
-            tamil_month: row.tamil_month,
-            tamil_date: Number(row.tamil_date),
-            thithi: row.thithi,
-            nakshatram: row.nakshatram,
-            special_event: row.special_event || null,
-            created_by: row.created_by,
-            updated_by: row.updated_by,
-            updated_at: row.updated_at,
-          };
-        });
-
-        setCalendarEntries(cleanMap);
-      } catch (err: any) {
-        setCalendarEntries({});
-        setToast({ message: err.message || 'Error loading month data', type: 'error' });
-      }
+    const startYear = parseInt(match[1], 10);
+    let cancelled = false;
+    setSpanReady(false);
+    fetch(
+      `${API_BASE}/panchangam/month-span?startYear=${startYear}&month=${encodeURIComponent(selectedMonth.trim())}`,
+      { headers: { ...authHeader() } }
+    )
+      .then(async (res) => {
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(loginMessage(res.status) || json.message || 'Could not get the month dates from the server');
+        if (cancelled) return;
+        setMonthStartDate(String(json.start));
+        setMonthLength(Number(json.length));
+        setSpanReady(true);
+      })
+      .catch((e: any) => {
+        if (cancelled) return;
+        setMonthStartDate('');
+        setToast({ message: e?.message || 'Could not get the month dates from the server', type: 'error' });
+      });
+    return () => {
+      cancelled = true;
     };
+  }, [selectedYear, selectedMonth, tamilYears, API_BASE]);
 
-    fetchMonthFromDb();
+  // 3. Fetch Month Data & strictly replace state (also reused after a bulk API save)
+  const loadMonth = useCallback(async () => {
+    try {
+      const res = await fetch(
+        `${API_BASE}/panchangam/month?year=${encodeURIComponent(selectedYear.trim())}&month=${encodeURIComponent(selectedMonth.trim())}`,
+        { headers: { ...authHeader() } }
+      );
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(loginMessage(res.status) || err.message || 'Failed to fetch month data');
+      }
+      const json = await res.json();
+
+      // Complete state replacement indexed strictly by numeric tamil_date
+      const cleanMap: Record<number, ExtendedPanchangamEntry> = {};
+      (json.entries || []).forEach((row: any) => {
+        cleanMap[Number(row.tamil_date)] = {
+          id: row.id,
+          calendar_date: row.calendar_date,
+          tamil_year: row.tamil_year,
+          tamil_month: row.tamil_month,
+          tamil_date: Number(row.tamil_date),
+          thithi: row.thithi,
+          nakshatram: row.nakshatram,
+          special_event: row.special_event || null,
+          created_by: row.created_by,
+          updated_by: row.updated_by,
+          updated_at: row.updated_at,
+        };
+      });
+
+      setCalendarEntries(cleanMap);
+    } catch (err: any) {
+      setCalendarEntries({});
+      setToast({ message: err.message || 'Error loading month data', type: 'error' });
+    }
   }, [selectedYear, selectedMonth, API_BASE]);
+
+  useEffect(() => {
+    loadMonth();
+  }, [loadMonth]);
 
   // Toast Auto-Dismiss
   useEffect(() => {
@@ -189,7 +213,7 @@ export default function PanchangamPage() {
     return d ? d.getUTCDay() : 0;
   }, [monthStartDate]);
 
-  const totalDays = TAMIL_MONTH_CONFIG[selectedMonth]?.length || 30;
+  const totalDays = monthLength;
   const daysInTamilMonth = useMemo(() => Array.from({ length: totalDays }, (_, i) => i + 1), [totalDays]);
 
   const getAutoEnglishDate = (tDate: number): string => {
@@ -225,7 +249,12 @@ export default function PanchangamPage() {
   );
 
   const handleOpenEdit = (tDate: number) => {
+    if (!spanReady) {
+      setToast({ message: 'The dates of this month are still loading. Please try again in a moment', type: 'error' });
+      return;
+    }
     setEditingTamilDate(tDate);
+    setApiNote(null);
     setIsDateLocked(true); // Lock English date by default to prevent accidental collisions
     const existing = calendarEntries[tDate];
     const autoEngDate = getAutoEnglishDate(tDate);
@@ -262,21 +291,20 @@ export default function PanchangamPage() {
       thithi: formData.thithi.trim(),
       nakshatram: formData.nakshatram.trim(),
       special_event: cleanSpecialEvent,
-      user_name: currentUser,
     };
 
     try {
       const res = await fetch(`${API_BASE}/panchangam/upsert`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeader() },
         body: JSON.stringify(payload),
       });
 
-      const json = await res.json();
+      const json = await res.json().catch(() => ({}));
 
       if (!res.ok) {
         // Handles 409 Conflict when date is already registered to another Tamil day
-        throw new Error(json.message || 'Failed to save date');
+        throw new Error(loginMessage(res.status) || json.message || 'Failed to save date');
       }
 
       // 2. Strict typed entry for React state
@@ -306,23 +334,97 @@ export default function PanchangamPage() {
     }
   };
 
-  const handleClearEntry = async () => {
+  // Fill Thithi + Nakshatram in the open drawer from the 3rd-party API. Nothing is saved until you press Save.
+  const handleFetchFromApi = async () => {
+    if (!formData.calendar_date) {
+      setToast({ message: 'Set the English date first', type: 'error' });
+      return;
+    }
+    setIsFetchingApi(true);
+    setApiNote(null);
+    try {
+      const res = await fetch(
+        `${API_BASE}/panchangam/suggest?date=${encodeURIComponent(formData.calendar_date)}`,
+        { headers: { ...authHeader() } }
+      );
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(loginMessage(res.status) || json.message || 'Could not fetch from Panchangam API');
+      const s = json.suggestion;
+      setFormData((prev) => ({ ...prev, thithi: s.thithi, nakshatram: s.nakshatram }));
+      setApiNote(
+        `Filled from API (${s.provider}). Please verify before saving.${
+          s.warnings?.length ? ' ' + s.warnings.join(' · ') : ''
+        }`
+      );
+    } catch (err: any) {
+      setToast({ message: err.message, type: 'error' });
+    } finally {
+      setIsFetchingApi(false);
+    }
+  };
+
+  // Save the rows ticked in the month review modal, one /upsert each, so every save is audit-logged.
+  const saveSuggestions = async (items: SaveItem[]) => {
     const currentUser = user?.full_name || user?.email || 'Admin User';
+    const failed: { tamilDate: number; message: string }[] = [];
+    let saved = 0;
+
+    for (const it of items) {
+      try {
+        const res = await fetch(`${API_BASE}/panchangam/upsert`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...authHeader() },
+          body: JSON.stringify({
+            calendar_date: it.calendar_date,
+            tamil_year: selectedYear,
+            tamil_month: selectedMonth,
+            tamil_date: it.tamilDate,
+            thithi: it.thithi,
+            nakshatram: it.nakshatram,
+            special_event: calendarEntries[it.tamilDate]?.special_event ?? null, // never wipe an existing festival
+          }),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(loginMessage(res.status) || json.message || 'Failed to save');
+        saved++;
+      } catch (err: any) {
+        failed.push({ tamilDate: it.tamilDate, message: err.message || 'Failed' });
+      }
+    }
+
+    await loadMonth();
+    if (saved > 0) {
+      setToast({ message: `${saved} நாட்கள் சேமிக்கப்பட்டன`, type: 'success' });
+    }
+    return { saved, failed };
+  };
+
+  const suggestRows: SuggestRow[] = isSuggestOpen
+    ? daysInTamilMonth.map((d) => {
+        const e = calendarEntries[d];
+        return {
+          tamilDate: d,
+          englishDate: e?.calendar_date || getAutoEnglishDate(d),
+          existing: e ? { thithi: e.thithi, nakshatram: e.nakshatram } : null,
+        };
+      })
+    : [];
+
+  const handleClearEntry = async () => {
     try {
       const res = await fetch(`${API_BASE}/panchangam/entry`, {
         method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeader() },
         body: JSON.stringify({
           tamil_year: selectedYear,
           tamil_month: selectedMonth,
           tamil_date: editingTamilDate,
-          user_name: currentUser,
         }),
       });
 
       if (!res.ok) {
-        const json = await res.json();
-        throw new Error(json.message || 'Failed to delete');
+        const json = await res.json().catch(() => ({}));
+        throw new Error(loginMessage(res.status) || json.message || 'Failed to delete');
       }
 
       setCalendarEntries((prev) => {
@@ -350,11 +452,11 @@ export default function PanchangamPage() {
     try {
       const res = await fetch(`${API_BASE}/panchangam/years`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeader() },
         body: JSON.stringify(newYearObj),
       });
 
-      if (!res.ok) throw new Error('Failed to save year into database');
+      if (!res.ok) throw new Error(loginMessage(res.status) || 'Failed to save year into database');
 
       setTamilYears((prev) => [...prev, newYearObj]);
       setSelectedYear(newYearObj.name);
@@ -392,7 +494,15 @@ export default function PanchangamPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setIsSuggestOpen(true)}
+            disabled={!spanReady}
+            className="h-9 px-4 rounded-xl text-xs font-bold border bg-[#fff8eb] border-[#fcd34d] text-[#b45309] hover:bg-[#feecdc] transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            ⚡ API-யிலிருந்து நிரப்பு
+          </button>
           <div className="inline-flex rounded-xl bg-slate-100 p-1 border border-slate-200">
             {(['grid', 'agenda'] as const).map((v) => (
               <button
@@ -709,6 +819,18 @@ export default function PanchangamPage() {
                   )}
                 </div>
 
+                <div className="rounded-xl border border-dashed border-[#fcd34d] bg-[#fffdf7] p-3 space-y-2">
+                  <button
+                    type="button"
+                    onClick={handleFetchFromApi}
+                    disabled={isFetchingApi}
+                    className="h-9 px-4 rounded-xl bg-[#fff8eb] hover:bg-[#feecdc] border border-[#fcd34d] text-[#b45309] text-xs font-black cursor-pointer disabled:opacity-60"
+                  >
+                    {isFetchingApi ? 'Fetching…' : '⚡ Auto-fill Thithi & Nakshatram from API'}
+                  </button>
+                  {apiNote && <p className="text-[10.5px] font-semibold text-amber-800">{apiNote}</p>}
+                </div>
+
                 <div>
                   <span className={fieldTitle}>திதி (Thithi) *</span>
                   <input
@@ -855,7 +977,18 @@ export default function PanchangamPage() {
         </div>
       )}
 
-      {/* 7. Toast Alerts */}
+      {/* 7. Month review: API suggestions */}
+      {isSuggestOpen && (
+        <PanchangamSuggestModal
+          apiBase={API_BASE}
+          monthLabel={`${selectedYear} · ${selectedMonth}`}
+          rows={suggestRows}
+          onClose={() => setIsSuggestOpen(false)}
+          onSave={saveSuggestions}
+        />
+      )}
+
+      {/* 8. Toast Alerts */}
       {toast && (
         <div
           className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-full text-white text-sm font-semibold shadow-xl transition-all ${
@@ -867,4 +1000,4 @@ export default function PanchangamPage() {
       )}
     </div>
   );
-}   
+}

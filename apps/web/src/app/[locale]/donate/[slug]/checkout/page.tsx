@@ -70,6 +70,7 @@ const RELATIONS = [
   'Father (தந்தை)', 'Mother (தாய்)', 'Brother (சகோதரன்)', 'Sister (சகோதரி)', 'Other',
 ];
 
+const MAX_MEMBERS = 5;
 const QUICK_AMOUNTS = ['501', '1008', '2001', '5001'];
 const TOKEN_KEYS = ['devotee_token', 'token', 'auth_token', 'accessToken'];
 const PAN_REGEX = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
@@ -453,7 +454,19 @@ export default function DonationCheckoutPage() {
   }, [devoteeToken, fund, bookingDate, dateProblem, API_BASE]);
 
   // Family members
+  const atMemberLimit = familyMembers.length >= MAX_MEMBERS;
+
+  const limitMessage = () =>
+    tr(
+      `Only ${MAX_MEMBERS} family members are allowed.`,
+      `அதிகபட்சம் ${MAX_MEMBERS} குடும்ப உறுப்பினர்கள் மட்டுமே சேர்க்க இயலும்.`
+    );
+
   const addFamilyMember = () => {
+    if (familyMembers.length >= MAX_MEMBERS) {
+      setMemberErr({ index: -1, field: 'limit', message: limitMessage() });
+      return;
+    }
     setFamilyMembers((prev) => [
       ...prev,
       { ...emptyMember('Spouse (மனைவி / கணவர்)'), gothram: prev[0]?.gothram || '', gothramOther: prev[0]?.gothramOther || '' },
@@ -480,6 +493,17 @@ export default function DonationCheckoutPage() {
   };
 
   const findMemberProblem = (): MemberErr | null => {
+    // A saved profile may already hold more than the allowed number
+    if (familyMembers.length > MAX_MEMBERS) {
+      return {
+        index: MAX_MEMBERS,
+        field: 'limit',
+        message: tr(
+          `Only ${MAX_MEMBERS} family members are allowed. Please remove ${familyMembers.length - MAX_MEMBERS}.`,
+          `அதிகபட்சம் ${MAX_MEMBERS} உறுப்பினர்கள். ${familyMembers.length - MAX_MEMBERS} பேரை நீக்கவும்.`
+        ),
+      };
+    }
     for (let i = 0; i < familyMembers.length; i++) {
       const m = familyMembers[i];
       const prefix = `${tr('Member', 'உறுப்பினர்')} ${i + 1}: `;
@@ -535,6 +559,14 @@ export default function DonationCheckoutPage() {
   // Pay Now
   const handlePayNow = async () => {
     if (paying) return;
+
+    // Last safety check before any money is taken
+    if (familyMembers.length > MAX_MEMBERS) {
+      goStep(1);
+      setMemberErr({ index: MAX_MEMBERS, field: 'limit', message: limitMessage() });
+      setNotice({ tone: 'error', text: limitMessage() });
+      return;
+    }
 
     const amountErr = validateAmount();
     if (amountErr) {
@@ -1117,8 +1149,8 @@ export default function DonationCheckoutPage() {
                   <SectionTitle
                     title={tr('Family Members', 'குடும்ப உறுப்பினர்கள்')}
                     hint={tr(
-                      'Names to be included in the sankalpam for this donation.',
-                      'இந்த நன்கொடைக்கான சங்கல்பத்தில் சேர்க்கப்பட வேண்டிய நபர்களை உள்ளிடவும்.'
+                      `Names to be included in the sankalpam for this donation (maximum ${MAX_MEMBERS}).`,
+                      `இந்த நன்கொடைக்கான சங்கல்பத்தில் சேர்க்கப்பட வேண்டிய நபர்கள் (அதிகபட்சம் ${MAX_MEMBERS}).`
                     )}
                   />
 
@@ -1149,11 +1181,18 @@ export default function DonationCheckoutPage() {
                     <button
                       type="button"
                       onClick={addFamilyMember}
-                      className="min-h-[44px] cursor-pointer rounded-md border border-dashed border-maroon bg-white px-4 text-[15px] font-bold text-maroon transition-colors hover:bg-cream"
+                      disabled={atMemberLimit}
+                      className="min-h-[44px] cursor-pointer rounded-md border border-dashed border-maroon bg-white px-4 text-[15px] font-bold text-maroon transition-colors hover:bg-cream disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-white"
                     >
                       + {tr('Add Member', 'உறுப்பினர் சேர்')}
                     </button>
                   </div>
+                  <p className="text-sm font-semibold text-charcoal/65">
+                    {tr(
+                      `${familyMembers.length} of ${MAX_MEMBERS} members added (maximum ${MAX_MEMBERS} allowed).`,
+                      `${familyMembers.length} / ${MAX_MEMBERS} உறுப்பினர்கள் சேர்க்கப்பட்டுள்ளனர் (அதிகபட்சம் ${MAX_MEMBERS}).`
+                    )}
+                  </p>
 
                   {memberErr && (
                     <p role="alert" className="rounded-md border border-red-200 bg-red-50 p-3 text-base font-semibold text-red-700">

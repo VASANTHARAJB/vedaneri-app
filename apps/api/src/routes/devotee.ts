@@ -29,6 +29,27 @@ const upload = multer({
   limits: { fileSize: 4 * 1024 * 1024 },
 });
 
+// Helper: Generate next sequential SDSS code atomically inside a connection
+async function getNextDevoteeCode(conn: any): Promise<string> {
+  const [rows]: any = await conn.query(
+    `SELECT devotee_code 
+     FROM devotees 
+     WHERE devotee_code LIKE 'SDSS%' 
+     ORDER BY LENGTH(devotee_code) DESC, devotee_code DESC 
+     LIMIT 1 FOR UPDATE`
+  );
+
+  let nextNum = 1;
+  if (rows && rows.length > 0 && rows[0].devotee_code) {
+    const match = rows[0].devotee_code.match(/\d+$/);
+    if (match) {
+      nextNum = parseInt(match[0], 10) + 1;
+    }
+  }
+
+  return `SDSS${String(nextNum).padStart(5, '0')}`;
+}
+
 // Middleware to extract devotee from Bearer Token
 function authDevotee(req: any, res: Response, next: any) {
   const authHeader = req.headers.authorization;
@@ -50,6 +71,7 @@ function authDevotee(req: any, res: Response, next: any) {
 // 1. PUBLIC DEVOTEE AUTH (Mobile Quick Login / Auto Register for Seva Booking)
 // --------------------------------------------------------------------------
 router.post('/auth', async (req: Request, res: Response) => {
+  const conn = await pool.getConnection();
   try {
     const { phone } = req.body;
 
@@ -59,28 +81,36 @@ router.post('/auth', async (req: Request, res: Response) => {
 
     const cleanPhone = String(phone).replace(/\D/g, '').slice(-10);
 
-    // Check if devotee already exists
-    const [rows]: any = await pool.query(
-      `SELECT id, first_name, last_name, email, phone, aadhaar_number, pan_number, 
+    // Search phone whether stored as 10 digits or with '+91'
+    const [rows]: any = await conn.query(
+      `SELECT id, devotee_code, first_name, last_name, email, phone, aadhaar_number, pan_number, 
               avatar_url, comm_address, city, state, residency 
-       FROM devotees WHERE phone = ? LIMIT 1`,
-      [cleanPhone]
+       FROM devotees 
+       WHERE phone = ? OR phone = ? OR phone LIKE ? 
+       ORDER BY created_at ASC 
+       LIMIT 1`,
+      [cleanPhone, `+91${cleanPhone}`, `%${cleanPhone}`]
     );
 
     let devotee = rows && rows.length > 0 ? rows[0] : null;
     let isNew = false;
 
-    // Auto-create devotee if new
     if (!devotee) {
-      const devoteeId = crypto.randomUUID();
-      await pool.query(
-        `INSERT INTO devotees (id, phone, first_name, created_at, updated_at) 
-         VALUES (?, ?, 'Devotee', NOW(), NOW())`,
-        [devoteeId, cleanPhone]
+      await conn.beginTransaction();
+
+      const devoteeCode = await getNextDevoteeCode(conn);
+      const devoteeId = `dev_${Date.now()}_${Math.floor(1000 + Math.random() * 9000)}`;
+
+      await conn.query(
+        `INSERT INTO devotees (id, devotee_code, phone, first_name, created_at, updated_at) 
+         VALUES (?, ?, ?, 'Devotee', NOW(), NOW())`,
+        [devoteeId, devoteeCode, `+91${cleanPhone}`]
       );
 
-      const [newRows]: any = await pool.query(
-        `SELECT id, first_name, last_name, email, phone, aadhaar_number, pan_number, 
+      await conn.commit();
+
+      const [newRows]: any = await conn.query(
+        `SELECT id, devotee_code, first_name, last_name, email, phone, aadhaar_number, pan_number, 
                 avatar_url, comm_address, city, state, residency 
          FROM devotees WHERE id = ? LIMIT 1`,
         [devoteeId]
@@ -90,7 +120,7 @@ router.post('/auth', async (req: Request, res: Response) => {
     }
 
     // Fetch existing family members if any
-    const [family]: any = await pool.query(
+    const [family]: any = await conn.query(
       `SELECT id, title, name, gothram, nakshathiram, rasi, relation 
        FROM devotee_family_members WHERE devotee_id = ?`,
       [devotee.id]
@@ -104,6 +134,7 @@ router.post('/auth', async (req: Request, res: Response) => {
     );
 
     const displayName = [devotee.first_name, devotee.last_name].filter(Boolean).join(' ') || 'Devotee';
+    const formattedDevoteeId = devotee.devotee_code || devotee.id;
 
     return res.json({
       success: true,
@@ -112,6 +143,8 @@ router.post('/auth', async (req: Request, res: Response) => {
       token,
       devotee: {
         id: devotee.id,
+        devotee_id: formattedDevoteeId,
+        devotee_code: devotee.devotee_code || '',
         phone: devotee.phone,
         first_name: devotee.first_name || '',
         last_name: devotee.last_name || '',
@@ -127,8 +160,11 @@ router.post('/auth', async (req: Request, res: Response) => {
       familyMembers: family || [],
     });
   } catch (error: any) {
+    await conn.rollback();
     console.error('Devotee auth error:', error);
     return res.status(500).json({ message: 'Authentication failed', error: error.message });
+  } finally {
+    conn.release();
   }
 });
 
@@ -138,7 +174,7 @@ router.post('/auth', async (req: Request, res: Response) => {
 router.get('/profile', authDevotee, async (req: any, res: Response) => {
   try {
     const [devotees]: any = await pool.query(
-      `SELECT id, first_name, last_name, email, phone, aadhaar_number, pan_number, 
+      `SELECT id, devotee_code, first_name, last_name, email, phone, aadhaar_number, pan_number, 
               avatar_url, comm_address, city, state, residency 
        FROM devotees WHERE id = ? LIMIT 1`,
       [req.devoteeId]
@@ -148,6 +184,8 @@ router.get('/profile', authDevotee, async (req: any, res: Response) => {
       return res.status(404).json({ message: 'Devotee not found' });
     }
 
+    const devotee = devotees[0];
+
     const [family]: any = await pool.query(
       `SELECT id, title, name, gothram, nakshathiram, rasi, relation 
        FROM devotee_family_members WHERE devotee_id = ?`,
@@ -155,7 +193,10 @@ router.get('/profile', authDevotee, async (req: any, res: Response) => {
     );
 
     return res.json({
-      profile: devotees[0],
+      profile: {
+        ...devotee,
+        devotee_id: devotee.devotee_code || devotee.id,
+      },
       familyMembers: family || [],
     });
   } catch (error: any) {
@@ -185,7 +226,6 @@ router.post(
         family_members,
       } = req.body;
 
-      // Convert empty strings to null to avoid UNIQUE key collisions in MariaDB
       const cleanAadhaar =
         aadhaar_number && aadhaar_number.trim().length > 0
           ? aadhaar_number.replace(/\s+/g, '')
@@ -198,7 +238,6 @@ router.post(
 
       const avatarUrl = req.file ? `/uploads/avatars/${req.file.filename}` : undefined;
 
-      // Update devotees table
       if (avatarUrl) {
         await pool.query(
           `UPDATE devotees SET 
@@ -238,7 +277,6 @@ router.post(
         );
       }
 
-      // Parse and sync family_members
       if (family_members) {
         let membersList = [];
         try {
@@ -251,14 +289,13 @@ router.post(
         }
 
         if (Array.isArray(membersList)) {
-          // Replace previous family records
           await pool.query('DELETE FROM devotee_family_members WHERE devotee_id = ?', [req.devoteeId]);
 
           for (const m of membersList) {
             if (m.name && m.name.trim()) {
               await pool.query(
                 `INSERT INTO devotee_family_members 
-                  (devotee_id, title, name, gothram, nakshathiram, rasi, relation)
+                   (devotee_id, title, name, gothram, nakshathiram, rasi, relation)
                  VALUES (?, ?, ?, ?, ?, ?, ?)`,
                 [
                   req.devoteeId,

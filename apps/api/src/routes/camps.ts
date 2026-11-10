@@ -60,6 +60,144 @@ function runUpload(req: Request, res: Response, next: NextFunction) {
   });
 }
 
+// ---------- Attendee ID proof + photo (kept OUTSIDE the public /uploads folder) ----------
+const privateDir = path.resolve(__dirname, '../../private/camp');
+if (!fs.existsSync(privateDir)) fs.mkdirSync(privateDir, { recursive: true });
+
+const idKeyBuf = (): Buffer | null => {
+  const k = clean(process.env.CAMP_ID_KEY) || clean(process.env.DONATION_ID_KEY);
+  return /^[0-9a-fA-F]{64}$/.test(k) ? Buffer.from(k, 'hex') : null;
+};
+function encryptValue(plain: string, key: Buffer): string {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const enc = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final()]);
+  return [iv.toString('base64'), cipher.getAuthTag().toString('base64'), enc.toString('base64')].join(':');
+}
+function decryptValue(blob: string, key: Buffer): string {
+  const [iv, tag, enc] = blob.split(':').map((p) => Buffer.from(p, 'base64'));
+  const d = crypto.createDecipheriv('aes-256-gcm', key, iv);
+  d.setAuthTag(tag);
+  return Buffer.concat([d.update(enc), d.final()]).toString('utf8');
+}
+
+type IdType = 'aadhaar' | 'pan' | 'voter' | 'passport';
+const ID_TYPES: IdType[] = ['aadhaar', 'pan', 'voter', 'passport'];
+const CHILD_ID_TYPES: IdType[] = ['aadhaar', 'pan', 'passport']; // a Voter ID needs age 18+
+
+const VD = [
+  [0,1,2,3,4,5,6,7,8,9],[1,2,3,4,0,6,7,8,9,5],[2,3,4,0,1,7,8,9,5,6],[3,4,0,1,2,8,9,5,6,7],[4,0,1,2,3,9,5,6,7,8],
+  [5,9,8,7,6,0,4,3,2,1],[6,5,9,8,7,1,0,4,3,2],[7,6,5,9,8,2,1,0,4,3],[8,7,6,5,9,3,2,1,0,4],[9,8,7,6,5,4,3,2,1,0],
+];
+const VP = [
+  [0,1,2,3,4,5,6,7,8,9],[1,5,7,6,2,8,3,0,9,4],[5,8,0,3,7,9,6,1,4,2],[8,9,1,6,0,4,3,5,2,7],
+  [9,4,5,3,1,2,6,8,7,0],[4,2,8,6,5,7,3,9,0,1],[2,7,9,3,8,0,6,4,1,5],[7,0,4,6,9,1,3,2,5,8],
+];
+function isValidAadhaar(a: string): boolean {
+  if (!/^[2-9][0-9]{11}$/.test(a)) return false;
+  let c = 0;
+  const d = a.split('').reverse().map(Number);
+  for (let i = 0; i < d.length; i++) c = VD[c][VP[i % 8][d[i]]];
+  return c === 0;
+}
+const normalizeId = (v: string) => String(v || '').replace(/[\s-]/g, '').toUpperCase();
+function idProblem(type: IdType, n: string): string | null {
+  if (type === 'aadhaar') return isValidAadhaar(n) ? null : 'Enter a valid 12-digit Aadhaar number.';
+  if (type === 'pan') return /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(n) ? null : 'Enter a valid PAN (for example ABCDE1234F).';
+  if (type === 'voter') return /^[A-Z]{3}[0-9]{7}$/.test(n) ? null : 'Enter a valid Voter ID (EPIC) number (for example ABC1234567).';
+  return /^[A-Z][0-9]{7}$/.test(n) ? null : 'Enter a valid passport number (for example A1234567).';
+}
+
+// The file type is read from the file itself, not from what the browser says
+function sniffFile(full: string): string | null {
+  let fd = -1;
+  try {
+    fd = fs.openSync(full, 'r');
+    const b = Buffer.alloc(12);
+    const n = fs.readSync(fd, b, 0, 12, 0);
+    if (n < 12) return null;
+    if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'image/jpeg';
+    if (b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return 'image/png';
+    if (b.subarray(0, 4).toString('latin1') === 'RIFF' && b.subarray(8, 12).toString('latin1') === 'WEBP') return 'image/webp';
+    if (b.subarray(0, 5).toString('latin1') === '%PDF-') return 'application/pdf';
+    return null;
+  } catch {
+    return null;
+  } finally {
+    if (fd >= 0) fs.closeSync(fd);
+  }
+}
+const PHOTO_MIME = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const DOC_MIME = new Set(['image/jpeg', 'image/png', 'application/pdf']);
+
+const attendeeUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_r, _f, cb) => cb(null, privateDir),
+    filename: (_r, _f, cb) => cb(null, crypto.randomBytes(16).toString('hex')),
+  }),
+  limits: { fileSize: 5 * 1024 * 1024, files: 50, fields: 40, fieldSize: 20000 },
+});
+function runRegisterUpload(req: Request, res: Response, next: NextFunction) {
+  attendeeUpload.any()(req, res, (err: any) => {
+    if (err) {
+      const files = (req.files as Express.Multer.File[]) || [];
+      files.forEach((f) => fs.unlink(f.path, () => {}));
+      const big = err.code === 'LIMIT_FILE_SIZE';
+      return res.status(400).json({ message: big ? 'Each file must be 5 MB or smaller.' : 'The upload could not be read. Please try again.' });
+    }
+    next();
+  });
+}
+
+let attendeeTable: Promise<void> | null = null;
+function ensureAttendeeTable(): Promise<void> {
+  if (!attendeeTable) {
+    attendeeTable = pool
+      .query(
+        `CREATE TABLE IF NOT EXISTS camp_attendees (
+          id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+          registration_id INT NOT NULL,
+          camp_id VARCHAR(36) NOT NULL,
+          seq SMALLINT UNSIGNED NOT NULL,
+          kind ENUM('adult','child') NOT NULL DEFAULT 'adult',
+          name VARCHAR(150) NOT NULL,
+          id_type ENUM('aadhaar','pan','voter','passport') NOT NULL,
+          id_last4 CHAR(4) NOT NULL,
+          id_number_enc TEXT NOT NULL,
+          id_hash CHAR(64) NOT NULL,
+          id_doc_file VARCHAR(80) NOT NULL,
+          id_doc_mime VARCHAR(40) NOT NULL,
+          photo_file VARCHAR(80) NOT NULL,
+          photo_mime VARCHAR(40) NOT NULL,
+          created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (id),
+          KEY idx_camp_attendees_reg (registration_id),
+          KEY idx_camp_attendees_camp_hash (camp_id, id_hash)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+      )
+      .then(() => undefined)
+      .catch((e) => {
+        attendeeTable = null;
+        throw e;
+      });
+  }
+  return attendeeTable;
+}
+
+// Removes the attendees of a registration together with their files
+async function purgeAttendees(registrationId: number | string): Promise<void> {
+  try {
+    await ensureAttendeeTable();
+    const [rows]: any = await pool.query('SELECT id_doc_file, photo_file FROM camp_attendees WHERE registration_id = ?', [registrationId]);
+    for (const r of rows || []) {
+      [r.id_doc_file, r.photo_file].forEach((f: string) => f && fs.unlink(path.join(privateDir, path.basename(f)), () => {}));
+    }
+    await pool.query('DELETE FROM camp_attendees WHERE registration_id = ?', [registrationId]);
+  } catch (e: any) {
+    console.error('[Camps] purgeAttendees failed:', e?.message || e);
+  }
+}
+
 const adminGuard = (req: Request, res: Response, next: NextFunction) =>
   authenticate(req as AuthenticatedRequest, res, next);
 
@@ -282,6 +420,64 @@ router.get('/admin/:id/registrations/export', adminGuard, async (req: Request, r
   }
 });
 
+// ----- Attendees of a camp: who is coming, with which ID (CMS login required) -----
+router.get('/admin/:id/attendees', adminGuard, async (req: Request, res: Response) => {
+  try {
+    await ensureAttendeeTable();
+    const [rows]: any = await pool.query(
+      `SELECT a.id, a.registration_id, a.seq, a.kind, a.name, a.id_type, a.id_last4, a.created_at,
+              r.status, r.payment_status, r.first_name AS reg_first, r.last_name AS reg_last, r.phone AS reg_phone
+         FROM camp_attendees a JOIN camp_registrations r ON r.id = a.registration_id
+        WHERE a.camp_id = ? AND r.status <> 'FAILED' ORDER BY a.registration_id DESC, a.seq ASC LIMIT 5000`,
+      [req.params.id]
+    );
+    res.set('Cache-Control', 'no-store');
+    return res.json({ attendees: rows });
+  } catch (e: any) {
+    console.error('Camp attendees error:', e?.message || e);
+    return res.status(500).json({ message: 'Failed to load attendees' });
+  }
+});
+
+// The photo or ID document itself (the CMS fetches it with its login token and shows it)
+router.get('/admin/attendee/:attId/file/:kind', adminGuard, async (req: Request, res: Response) => {
+  try {
+    const kind = req.params.kind === 'photo' ? 'photo' : req.params.kind === 'doc' ? 'doc' : '';
+    if (!kind) return res.status(400).json({ message: 'Invalid file type' });
+    await ensureAttendeeTable();
+    const [rows]: any = await pool.query('SELECT id_doc_file, id_doc_mime, photo_file, photo_mime FROM camp_attendees WHERE id = ? LIMIT 1', [Number(req.params.attId)]);
+    const r = rows?.[0];
+    if (!r) return res.status(404).json({ message: 'Not found' });
+    const full = path.join(privateDir, path.basename(kind === 'photo' ? r.photo_file : r.id_doc_file));
+    if (!fs.existsSync(full)) return res.status(404).json({ message: 'File missing on the server' });
+    res.set('Content-Type', kind === 'photo' ? r.photo_mime : r.id_doc_mime);
+    res.set('Cache-Control', 'private, no-store');
+    res.set('X-Content-Type-Options', 'nosniff');
+    return fs.createReadStream(full).pipe(res);
+  } catch (e: any) {
+    console.error('Camp attendee file error:', e?.message || e);
+    return res.status(500).json({ message: 'Failed to load the file' });
+  }
+});
+
+// Full ID number, decrypted (every view is written to the server log)
+router.get('/admin/attendee/:attId/id-number', adminGuard, async (req: Request, res: Response) => {
+  try {
+    const key = idKeyBuf();
+    if (!key) return res.status(503).json({ message: 'Encryption key is not configured' });
+    await ensureAttendeeTable();
+    const [rows]: any = await pool.query('SELECT id, registration_id, id_type, id_number_enc FROM camp_attendees WHERE id = ? LIMIT 1', [Number(req.params.attId)]);
+    const r = rows?.[0];
+    if (!r) return res.status(404).json({ message: 'Not found' });
+    console.log(`[Camps] ID number viewed: attendee ${r.id} (registration ${r.registration_id}) by ${(req as any).user?.email || (req as any).user?.id || 'admin'}`);
+    res.set('Cache-Control', 'no-store');
+    return res.json({ idType: r.id_type, idNumber: decryptValue(r.id_number_enc, key) });
+  } catch (e: any) {
+    console.error('Camp attendee id error:', e?.message || e);
+    return res.status(500).json({ message: 'Could not read the ID number' });
+  }
+});
+
 // =================== PUBLIC (website) ===================
 router.get('/public', async (_req: Request, res: Response) => {
   try {
@@ -326,7 +522,16 @@ router.get('/my-registrations', authDevotee, async (req: any, res: Response) => 
 // =================== REGISTER (login required) ===================
 // Free camp: registers at once. Paid camp: creates a payment order; the registration is confirmed in /verify.
 // One registration per devotee per camp. It cannot be changed afterwards.
-router.post('/:id/register', authDevotee, async (req: any, res: Response) => {
+router.post('/:id/register', authDevotee, runRegisterUpload, async (req: any, res: Response) => {
+  // Every uploaded file is deleted again if this request does not end well
+  const uploaded: Express.Multer.File[] = (req.files as Express.Multer.File[]) || [];
+  const keep = new Set<string>();
+  res.on('finish', () => {
+    uploaded.forEach((f) => {
+      if (res.statusCode >= 400 || !keep.has(f.path)) fs.unlink(f.path, () => {});
+    });
+  });
+  let regIdForCleanup: number | null = null;
   try {
     const b = req.body || {};
     const fail = (field: string, message: string) => res.status(400).json({ message, field });
@@ -353,6 +558,48 @@ router.post('/:id/register', authDevotee, async (req: any, res: Response) => {
     if (children < 0 || children > 20) return fail('children', 'Children must be between 0 and 20.');
     const members = adults + children;
     if (members > 25) return fail('adults', 'You can register up to 25 people at a time.');
+
+    // ----- Each attendee: name, ID proof type + number, ID document and profile photo (all required) -----
+    const key = idKeyBuf();
+    if (!key) {
+      console.error('[Camps] CAMP_ID_KEY (64 hex characters) is not set; registrations are disabled.');
+      return res.status(503).json({ message: 'Registration is temporarily unavailable. Please try again later.' });
+    }
+    let rawAtt: any[] = [];
+    try { rawAtt = JSON.parse(String(b.attendees || '[]')); } catch { rawAtt = []; }
+    if (!Array.isArray(rawAtt) || rawAtt.length !== members) return fail('adults', 'Please fill in the details of every attendee.');
+    const fileBy = new Map<string, Express.Multer.File>();
+    uploaded.forEach((f) => fileBy.set(f.fieldname, f));
+
+    type Att = { seq: number; kind: 'adult' | 'child'; name: string; idType: IdType; idNumber: string; doc: Express.Multer.File; docMime: string; photo: Express.Multer.File; photoMime: string };
+    const attendees: Att[] = [];
+    const seenIds = new Set<string>();
+    for (let i = 0; i < members; i++) {
+      const a = rawAtt[i] || {};
+      const kind: 'adult' | 'child' = i < adults ? 'adult' : 'child';
+      const f = (k: string) => `att-${i}-${k}`;
+      const name = str(a.name, 150);
+      if (!NAME_RE.test(name)) return fail(f('name'), 'Enter the name (letters only).');
+      const idType = String(a.idType || '') as IdType;
+      const allowed = kind === 'child' ? CHILD_ID_TYPES : ID_TYPES;
+      if (!allowed.includes(idType)) return fail(f('idType'), kind === 'child' ? 'Choose Aadhaar, PAN or Passport for a child.' : 'Choose an ID proof.');
+      const idNumber = normalizeId(a.idNumber);
+      const bad = idProblem(idType, idNumber);
+      if (bad) return fail(f('idNumber'), bad);
+      const dupKey = `${idType}:${idNumber}`;
+      if (seenIds.has(dupKey)) return fail(f('idNumber'), 'The same ID number is used for two attendees.');
+      seenIds.add(dupKey);
+
+      const doc = fileBy.get(`doc_${i}`);
+      const photo = fileBy.get(`photo_${i}`);
+      if (!doc) return fail(f('doc'), 'Upload the ID proof document.');
+      if (!photo) return fail(f('photo'), 'Upload the profile photo.');
+      const docMime = sniffFile(doc.path);
+      if (!docMime || !DOC_MIME.has(docMime)) return fail(f('doc'), 'The ID proof must be a JPG, PNG image or a PDF.');
+      const photoMime = sniffFile(photo.path);
+      if (!photoMime || !PHOTO_MIME.has(photoMime)) return fail(f('photo'), 'The photo must be a JPG, PNG or WebP image.');
+      attendees.push({ seq: i + 1, kind, name, idType, idNumber, doc, docMime, photo, photoMime });
+    }
 
     const city = str(b.city, 60);
     if (!PLACE_RE.test(city)) return fail('city', 'Please enter your city (letters only).');
@@ -394,6 +641,21 @@ router.post('/:id/register', authDevotee, async (req: any, res: Response) => {
       }
     }
 
+    // The same ID cannot be used by someone else's confirmed or still-held registration for this camp
+    await ensureAttendeeTable();
+    const hashOf = (a: Att) => crypto.createHmac('sha256', key).update(`${a.idType}:${a.idNumber}`).digest('hex');
+    const hashes = attendees.map(hashOf);
+    const [used]: any = await pool.query(
+      `SELECT a.id_hash FROM camp_attendees a JOIN camp_registrations r ON r.id = a.registration_id
+       WHERE a.camp_id = ? AND r.devotee_id <> ? AND ${HELD} AND a.id_hash IN (${hashes.map(() => '?').join(',')})`,
+      [camp.id, devoteeId, ...hashes]
+    );
+    if (used.length) {
+      const hit = new Set(used.map((u: any) => u.id_hash));
+      const idx = hashes.findIndex((h) => hit.has(h));
+      return fail(`att-${idx}-idNumber`, 'This ID has already been used to register for this camp.');
+    }
+
     const paid = camp.fee_type === 'paid' && camp.fee_amount > 0;
     const amount = paid ? Math.round(camp.fee_amount * members * 100) / 100 : 0;
     const acct = acctOf(cs[0].pay_account);
@@ -421,10 +683,27 @@ router.post('/:id/register', authDevotee, async (req: any, res: Response) => {
         amount, paid ? 'PENDING' : 'NONE', paid ? 'PENDING' : 'REGISTERED']
     );
 
-    if (!paid) return res.json({ registered: true, members });
-
     const [row]: any = await pool.query('SELECT id FROM camp_registrations WHERE camp_id = ? AND devotee_id = ? LIMIT 1', [camp.id, devoteeId]);
     const regId = row[0].id;
+    regIdForCleanup = regId;
+
+    // Replace any earlier attempt's attendees, then save these (files stay on disk, ID numbers are stored encrypted)
+    await purgeAttendees(regId);
+    for (let i = 0; i < attendees.length; i++) {
+      const a = attendees[i];
+      await pool.query(
+        `INSERT INTO camp_attendees
+           (registration_id, camp_id, seq, kind, name, id_type, id_last4, id_number_enc, id_hash, id_doc_file, id_doc_mime, photo_file, photo_mime)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [regId, camp.id, a.seq, a.kind, a.name, a.idType, a.idNumber.slice(-4), encryptValue(a.idNumber, key), hashes[i],
+          path.basename(a.doc.path), a.docMime, path.basename(a.photo.path), a.photoMime]
+      );
+      keep.add(a.doc.path);
+      keep.add(a.photo.path);
+    }
+
+    if (!paid) return res.json({ registered: true, members });
+
     const keys = keysFor(acct);
 
     // Reuse the earlier order when nothing about the amount changed
@@ -445,6 +724,7 @@ router.post('/:id/register', authDevotee, async (req: any, res: Response) => {
       });
     } catch (err: any) {
       await pool.query(`UPDATE camp_registrations SET status = 'FAILED', payment_status = 'FAILED' WHERE id = ?`, [regId]);
+      await purgeAttendees(regId);
       console.error('Camp order error:', err?.error?.description || err?.message || err);
       return res.status(502).json({ message: 'Could not start the payment. Please try again.' });
     }
@@ -455,6 +735,7 @@ router.post('/:id/register', authDevotee, async (req: any, res: Response) => {
       members,
     });
   } catch (e: any) {
+    if (regIdForCleanup) await purgeAttendees(regIdForCleanup); // do not leave half-saved attendees behind
     console.error('Camp register error:', e?.message || e);
     return res.status(500).json({ message: 'Could not register. Please try again.' });
   }
@@ -517,12 +798,14 @@ export async function syncPendingCampPayments(): Promise<void> {
       try {
         if (!r.razorpay_order_id) {
           await pool.query(`UPDATE camp_registrations SET status = 'FAILED', payment_status = 'FAILED' WHERE id = ? AND status = 'PENDING'`, [r.id]);
+          await purgeAttendees(r.id);
           continue;
         }
         const list: any = await client(acctOf(r.pay_account)).orders.fetchPayments(r.razorpay_order_id);
         const captured = (list?.items || []).find((p: any) => p.status === 'captured');
         if (!captured) {
           await pool.query(`UPDATE camp_registrations SET status = 'FAILED', payment_status = 'FAILED' WHERE id = ? AND status = 'PENDING'`, [r.id]);
+          await purgeAttendees(r.id); // the uploaded ID proofs are not kept for an unpaid attempt
           continue;
         }
         if (Math.round(Number(r.amount) * 100) !== Number(captured.amount)) {

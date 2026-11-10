@@ -1,15 +1,15 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import type { Locale } from '@/lib/i18n';
 import type { Dictionary } from '@/lib/dictionary';
 import Reveal from './Reveal';
 import SectionTitle from './SectionTitle';
 
-const FALLBACK = 'linear-gradient(180deg, #F3E4E1 0%, #7A1C1C 100%)';
-const FACE = '50% 12%';
-const LEAD_FACE = '50% 8%';
+const FALLBACK = 'linear-gradient(180deg, #F3E4E1 0%, #E9CFCB 100%)';
+const FACE = '50% 15%';
+const LEAD_FACE = '50% 10%';
 
 // English fallbacks, used only if the dictionary keys are missing
 const DEFAULT_GUIDES_TITLE = 'The Spiritual Guide of Pujyasri Swami Omkarananda Mahaswamigal';
@@ -32,17 +32,18 @@ type ExtraKeys = {
   dayananda?: { name?: string; role?: string; spec?: string; text?: string };
 };
 
+// A photo layer, then the soft background. An empty address (a card added in the CMS without a photo) shows only the background.
+const bgImg = (u: string) => (u ? `url('${u}'), ${FALLBACK}` : FALLBACK);
+
 const tags = (spec: string) => (spec ? spec.split(/\s*&\s*/).filter(Boolean) : []);
 
-function Mandala({ className = '' }: { className?: string }) {
+function Divider({ center = true }: { center?: boolean }) {
   return (
-    <svg aria-hidden="true" viewBox="0 0 200 200" className={className} fill="none" stroke="currentColor" strokeWidth="1.2">
-      {[0, 30, 60, 90, 120, 150].map((d) => (
-        <ellipse key={d} cx="100" cy="100" rx="22" ry="80" transform={`rotate(${d} 100 100)`} />
-      ))}
-      <circle cx="100" cy="100" r="80" />
-      <circle cx="100" cy="100" r="30" />
-    </svg>
+    <div aria-hidden="true" className={`flex items-center gap-3 ${center ? 'justify-center' : ''}`}>
+      <span className="h-px w-10 bg-saffron" />
+      <span className="h-1.5 w-1.5 rotate-45 bg-saffron" />
+      <span className="h-px w-10 bg-saffron" />
+    </div>
   );
 }
 
@@ -50,19 +51,25 @@ function Tags({ spec, label, center = false }: { spec: string; label: string; ce
   if (!spec) return null;
   return (
     <div>
-      <p className="text-xs font-bold uppercase tracking-wider text-charcoal/70 [html[lang='ta']_&]:tracking-normal">{label}</p>
+      <p className="text-xs font-semibold uppercase tracking-widest text-charcoal/60 [html[lang='ta']_&]:tracking-normal">{label}</p>
       <ul className={`mt-2 flex flex-wrap gap-2 ${center ? 'justify-center' : ''}`}>
         {tags(spec).map((s) => (
-          <li key={s} className="rounded-full border border-saffron/60 bg-rose/60 px-3 py-1 text-sm font-semibold text-maroon">{s}</li>
+          <li key={s} className="rounded-full border border-saffron/50 px-3 py-1 text-sm font-medium text-maroon">{s}</li>
         ))}
       </ul>
     </div>
   );
 }
 
-export default function Guides({ t }: { locale?: Locale; t: Dictionary['guides'] }) {
+// leadImage and dayanandaImage are optional: the CMS (Home Page) can replace those two photos.
+// The other cards take their photo from the guides list.
+export default function Guides({ t, leadImage, dayanandaImage }: { locale?: Locale; t: Dictionary['guides']; leadImage?: string; dayanandaImage?: string }) {
   const [isOpen, setIsOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const openerRef = useRef<HTMLButtonElement>(null);
+  const wasOpen = useRef(false);
 
   useEffect(() => {
     setMounted(true);
@@ -71,7 +78,15 @@ export default function Guides({ t }: { locale?: Locale; t: Dictionary['guides']
   // Lock scroll and handle ESC key
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setIsOpen(false);
+      if (e.key === 'Escape') { setIsOpen(false); return; }
+      // Keep Tab inside the dialog while it is open
+      if (e.key === 'Tab' && dialogRef.current) {
+        const items = Array.from(dialogRef.current.querySelectorAll<HTMLElement>('button, [href], [tabindex]:not([tabindex="-1"])'));
+        if (items.length === 0) return;
+        const first = items[0], last = items[items.length - 1];
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
     };
     if (isOpen) {
       document.body.style.overflow = 'hidden';
@@ -85,6 +100,13 @@ export default function Guides({ t }: { locale?: Locale; t: Dictionary['guides']
     };
   }, [isOpen]);
 
+  // Focus goes into the dialog when it opens, and back to the button when it closes
+  useEffect(() => {
+    if (isOpen) closeRef.current?.focus();
+    else if (wasOpen.current) openerRef.current?.focus();
+    wasOpen.current = isOpen;
+  }, [isOpen]);
+
   const extra = t as unknown as ExtraKeys;
   const guidesTitle = extra.guidesTitle || DEFAULT_GUIDES_TITLE;
   const chiefTitle = extra.chiefTitle || DEFAULT_CHIEF_TITLE;
@@ -95,7 +117,7 @@ export default function Guides({ t }: { locale?: Locale; t: Dictionary['guides']
   const dayananda: Guide = {
     name: extra.dayananda?.name || DEFAULT_DAYANANDA_NAME,
     role: extra.dayananda?.role || '',
-    image: DAYANANDA_IMAGE,
+    image: dayanandaImage || DAYANANDA_IMAGE,
     text: extra.dayananda?.text || '',
     spec: extra.dayananda?.spec || '',
   };
@@ -107,39 +129,37 @@ export default function Guides({ t }: { locale?: Locale; t: Dictionary['guides']
       : [dayananda];
 
   return (
-    <section aria-labelledby="guides-title" className="relative isolate overflow-hidden bg-gradient-to-b from-white to-rose/60 py-16 sm:py-20">
+    <section aria-labelledby="guides-title" className="bg-white py-20 sm:py-24">
       <div className="mx-auto max-w-6xl px-4 lg:px-8">
         {/* Row 1 title */}
         <SectionTitle id="guides-title" title={guidesTitle} subtitle={t.subtitle} />
 
         {/* Row 1: three cards */}
-        <ul className="mt-10 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <ul className="mt-12 grid gap-8 md:grid-cols-2 lg:grid-cols-3">
           {guides.map((a, idx) => (
-            <li key={a.name} className="flex">
+            <li key={`${a.name}-${idx}`} className="flex">
               <Reveal delay={idx * 120} className="flex w-full">
-                <article className="group/card flex w-full flex-col overflow-hidden rounded-2xl bg-white text-center shadow-lg ring-1 ring-rose">
-                  <div className="relative isolate h-24 overflow-hidden bg-maroon">
-                    <Mandala className="absolute -right-10 -top-16 -z-10 h-56 w-56 text-white/[0.1]" />
-                    <Mandala className="absolute -left-16 top-2 -z-10 h-40 w-40 text-saffron/[0.2]" />
-                  </div>
-
-                  <div className="relative z-10 -mt-16 mx-auto h-32 w-32 overflow-hidden rounded-full border-4 border-white bg-rose shadow-lg ring-2 ring-saffron">
+                <article className="group/card flex w-full flex-col overflow-hidden rounded-xl border border-saffron/30 bg-white transition-shadow duration-300 hover:shadow-lg">
+                  <div className="relative aspect-[4/5] overflow-hidden bg-rose/40">
                     <div
                       role="img"
                       aria-label={a.name}
-                      className="h-full w-full bg-cover transition-transform duration-700 ease-out group-hover/card:scale-110 motion-reduce:transition-none"
-                      style={{ backgroundImage: `url('${a.image}'), ${FALLBACK}`, backgroundPosition: FACE }}
+                      className="absolute inset-0 bg-cover transition-transform duration-700 ease-out group-hover/card:scale-105 motion-reduce:transition-none"
+                      style={{ backgroundImage: bgImg(a.image), backgroundPosition: FACE }}
                     />
                   </div>
 
-                  <div className="flex flex-1 flex-col px-6 pb-8 pt-4">
+                  <div className="flex flex-1 flex-col px-6 pb-8 pt-7 text-center">
                     {a.role && (
-                      <span className="mx-auto inline-block rounded-full bg-saffron px-3 py-1 text-xs font-bold uppercase tracking-wider text-charcoal [html[lang='ta']_&]:tracking-normal">
+                      <p className="text-xs font-semibold uppercase tracking-widest text-charcoal/60 [html[lang='ta']_&]:tracking-normal">
                         {a.role}
-                      </span>
+                      </p>
                     )}
-                    <h3 className="mt-3 font-display text-2xl font-semibold leading-snug text-maroon">{a.name}</h3>
-                    <p className="mt-3 text-justify font-serif text-[0.95rem] leading-relaxed text-charcoal/85 hyphens-auto">{a.text}</p>
+                    <h3 className="mt-2 font-display text-2xl font-semibold leading-snug text-maroon">{a.name}</h3>
+                    <div className="mt-4">
+                      <Divider />
+                    </div>
+                    <p className="mt-5 text-justify font-serif text-[0.95rem] leading-relaxed text-charcoal/85 hyphens-auto">{a.text}</p>
                     {a.spec && (
                       <div className="mt-auto pt-6">
                         <Tags spec={a.spec} label={t.specLabel || 'FOCUS'} center />
@@ -155,76 +175,65 @@ export default function Guides({ t }: { locale?: Locale; t: Dictionary['guides']
         {/* Row 2: title + single wide card */}
         {chiefAcharya && (
           <>
-            <Reveal delay={200} className="mt-16">
+            <Reveal delay={200} className="mt-20">
               <div className="text-center">
                 <h2 id="chief-acharya-title" className="font-display text-3xl font-semibold leading-snug text-maroon sm:text-4xl">
                   {chiefTitle}
                 </h2>
-                <div aria-hidden="true" className="mt-3 flex items-center justify-center gap-3">
-                  <span className="h-px w-10 bg-saffron" />
-                  <span className="h-2 w-2 rotate-45 bg-saffron" />
-                  <span className="h-px w-10 bg-saffron" />
+                <div className="mt-4">
+                  <Divider />
                 </div>
               </div>
             </Reveal>
 
-            <Reveal delay={240} className="mt-8">
+            <Reveal delay={240} className="mt-10">
               <article
                 aria-labelledby="chief-acharya-title"
-                className="group/lead grid overflow-hidden rounded-[2rem] bg-white shadow-xl ring-1 ring-rose lg:grid-cols-[300px_1fr]"
+                className="group/lead grid items-center gap-8 rounded-xl border border-saffron/30 bg-white p-6 sm:p-8 lg:grid-cols-[320px_1fr] lg:gap-12 lg:p-10"
               >
-                {/* Photo panel: fixed portrait arch anchored to the bottom */}
-                <div className="relative isolate flex items-end justify-center overflow-hidden bg-maroon px-6 pt-10">
-                  <Mandala className="absolute -left-20 -top-20 -z-10 h-72 w-72 text-white/[0.08]" />
-                  <div aria-hidden="true" className="absolute -bottom-10 left-1/2 -z-10 h-60 w-60 -translate-x-1/2 rounded-full bg-saffron/40 blur-3xl" />
-
-                  <div className="flex w-full max-w-[260px] flex-col rounded-t-[9999px] border-2 border-b-0 border-saffron/40 p-2 pb-0">
-                    <div className="flex flex-col rounded-t-[9999px] border-2 border-b-0 border-saffron/80 p-2 pb-0">
-                      <div className="relative aspect-[3/4] overflow-hidden rounded-t-[9999px] bg-rose">
-                        <div
-                          role="img"
-                          aria-label={chiefAcharya.name}
-                          className="absolute inset-0 bg-cover transition-transform duration-700 ease-out group-hover/lead:scale-105 motion-reduce:transition-none"
-                          style={{ backgroundImage: `url('/images/acharya-1.jpg'), ${FALLBACK}`, backgroundPosition: LEAD_FACE }}
-                        />
-                      </div>
-                    </div>
+                {/* Photo with a thin offset frame */}
+                <div className="relative mx-auto w-full max-w-[320px]">
+                  <div aria-hidden="true" className="absolute -bottom-3 -right-3 h-full w-full rounded-lg border border-saffron/60" />
+                  <div className="relative aspect-[3/4] overflow-hidden rounded-lg bg-rose/40">
+                    <div
+                      role="img"
+                      aria-label={chiefAcharya.name}
+                      className="absolute inset-0 bg-cover transition-transform duration-700 ease-out group-hover/lead:scale-105 motion-reduce:transition-none"
+                      style={{ backgroundImage: bgImg(leadImage || '/images/acharya-1.jpg'), backgroundPosition: LEAD_FACE }}
+                    />
                   </div>
                 </div>
 
-                <div className="flex flex-col justify-center p-6 text-left sm:p-8">
-                  <div>
-                    <span className="inline-block rounded-full border border-maroon px-3 py-0.5 text-xs font-bold uppercase tracking-wider text-maroon [html[lang='ta']_&]:tracking-normal">
-                      {chiefAcharya.role}
-                    </span>
-                  </div>
-
-                  <p className="mt-3 text-xs font-bold uppercase tracking-widest text-charcoal/70 [html[lang='ta']_&]:tracking-normal">
-                    {chiefAcharya.subTitle}
+                <div className="flex flex-col justify-center text-left">
+                  <p className="text-xs font-semibold uppercase tracking-widest text-charcoal/60 [html[lang='ta']_&]:tracking-normal">
+                    {chiefAcharya.role}
                   </p>
 
-                  <h3 className="mt-1 font-display text-3xl font-semibold leading-tight text-maroon sm:text-4xl">
+                  <h3 className="mt-2 font-display text-3xl font-semibold leading-tight text-maroon sm:text-4xl">
                     {chiefAcharya.name}
                   </h3>
 
-                  <div aria-hidden="true" className="mt-3 flex items-center gap-3">
-                    <span className="h-px w-10 bg-saffron" />
-                    <span className="h-1.5 w-1.5 rotate-45 bg-saffron" />
-                    <span className="h-px w-10 bg-saffron" />
+                  {chiefAcharya.subTitle && (
+                    <p className="mt-2 text-sm font-medium text-charcoal/70">{chiefAcharya.subTitle}</p>
+                  )}
+
+                  <div className="mt-4">
+                    <Divider center={false} />
                   </div>
 
-                  <p className="mt-4 text-justify font-serif text-base leading-relaxed text-charcoal/90 hyphens-auto sm:text-lg">
+                  <p className="mt-5 text-justify font-serif text-base leading-relaxed text-charcoal/90 hyphens-auto sm:text-lg">
                     {chiefAcharya.shortBio}
                   </p>
 
-                  <div className="mt-6 flex flex-wrap items-center justify-between gap-4">
+                  <div className="mt-7 flex flex-wrap items-center justify-between gap-5">
                     <button
+                      ref={openerRef}
                       type="button"
                       onClick={() => setIsOpen(true)}
-                      className="inline-flex items-center gap-2 rounded-full bg-maroon px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-md transition hover:bg-maroon/90 focus:outline-none focus:ring-2 focus:ring-saffron"
+                      className="inline-flex items-center gap-2 rounded-full border border-maroon px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-maroon transition hover:bg-maroon hover:text-white focus:outline-none focus:ring-2 focus:ring-saffron"
                     >
                       {t.readMore || 'Read Full Bio'}
-                      <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                      <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                         <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd" />
                       </svg>
                     </button>
@@ -243,30 +252,33 @@ export default function Guides({ t }: { locale?: Locale; t: Dictionary['guides']
       {/* Global Modal Portal */}
       {mounted && isOpen && chiefAcharya && createPortal(
         <div
+          ref={dialogRef}
           role="dialog"
           aria-modal="true"
+          aria-labelledby="chief-modal-title"
           className="fixed inset-0 z-[9999] flex items-center justify-center p-4 sm:p-6"
         >
           <div
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm transition-opacity"
             onClick={() => setIsOpen(false)}
           />
 
-          <div className="relative z-10 flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl ring-1 ring-black/10">
-            <div className="flex items-center justify-between border-b border-rose/60 bg-gradient-to-r from-maroon to-[#8B2323] px-6 py-4 text-white">
+          <div className="relative z-10 flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-black/10">
+            <div className="flex items-start justify-between gap-4 border-b border-saffron/40 px-6 py-5">
               <div>
-                <span className="text-xs font-bold uppercase tracking-wider text-saffron">
+                <p className="text-xs font-semibold uppercase tracking-widest text-charcoal/60 [html[lang='ta']_&]:tracking-normal">
                   {chiefAcharya.role}
-                </span>
-                <h4 className="font-display text-xl font-semibold sm:text-2xl">
+                </p>
+                <h4 id="chief-modal-title" className="mt-1 font-display text-xl font-semibold text-maroon sm:text-2xl">
                   {chiefAcharya.name}
                 </h4>
               </div>
               <button
+                ref={closeRef}
                 type="button"
                 onClick={() => setIsOpen(false)}
                 aria-label={t.close || 'Close'}
-                className="rounded-full bg-white/10 p-2 text-white hover:bg-white/20 transition focus:outline-none"
+                className="rounded-full border border-charcoal/20 p-2 text-charcoal/70 transition hover:bg-rose/40 hover:text-maroon focus:outline-none focus:ring-2 focus:ring-saffron"
               >
                 <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -283,16 +295,16 @@ export default function Guides({ t }: { locale?: Locale; t: Dictionary['guides']
                 ))}
               </div>
 
-              <div className="mt-8 border-t border-rose/40 pt-4">
+              <div className="mt-8 border-t border-saffron/30 pt-4">
                 <Tags spec={chiefAcharya.spec} label={t.specLabel || 'FOCUS'} />
               </div>
             </div>
 
-            <div className="border-t border-rose/60 bg-rose/20 px-6 py-3 text-right">
+            <div className="border-t border-saffron/30 px-6 py-3 text-right">
               <button
                 type="button"
                 onClick={() => setIsOpen(false)}
-                className="rounded-full border border-maroon bg-white px-5 py-1.5 text-xs font-bold uppercase tracking-wider text-maroon hover:bg-rose/40 transition"
+                className="rounded-full border border-maroon px-5 py-1.5 text-xs font-bold uppercase tracking-wider text-maroon transition hover:bg-maroon hover:text-white"
               >
                 {t.close || 'Close'}
               </button>

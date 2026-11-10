@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { homeSlug } from '../lib/access';
 
 // Images direct from apps/web/public/images
 import swamijiCutout from '@images/swamiji-cutout.png';
@@ -34,8 +35,16 @@ export default function Login() {
   const [agreed, setAgreed] = useState(true); // Default checked for slick SaaS flow
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  // Why the sign-in page is showing: the 24 hours ended, or the login was ended on the server
+  const [notice] = useState(() => {
+    try {
+      const n = localStorage.getItem('cms_notice');
+      if (n) localStorage.removeItem('cms_notice');
+      return n === 'expired' ? 'Your 24-hour session has ended. Please sign in again.' : n === 'ended' ? 'Your login is no longer active. Please sign in again.' : '';
+    } catch { return ''; }
+  });
 
-  if (user) return <Navigate to={loc.state?.from ?? '/'} replace />;
+  if (user) return <Navigate to={loc.state?.from ?? `/${homeSlug(user.role)}`} replace />;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -161,6 +170,12 @@ export default function Login() {
                   </span>
                 </label>
               </div>
+
+              {notice && !err && (
+                <div role="status" className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-xs font-semibold text-amber-800">
+                  {notice}
+                </div>
+              )}
 
               {/* Error Message */}
               {err && (

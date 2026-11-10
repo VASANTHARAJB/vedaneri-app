@@ -31,7 +31,17 @@ import magazineRouter, { syncMagazine } from './routes/magazine';
 import './services/discoverSchema';
 import discoverRouter from './routes/discover';
 import aboutPagesRouter from './routes/aboutPages';
-
+import magazineIssuesRouter from './routes/magazineIssues';
+import contactRouter from './routes/contact';
+import accommodationRouter from './routes/accommodation'
+ import homeRouter from './routes/home';
+    import paymentsRouter from './routes/payments';
+import devoteeAdminRouter from './routes/devoteeAdmin';
+import registersRouter from './routes/registers';
+import posRoutes from './routes/pos';
+import { roleAccess } from './middleware/roleAccess';
+import usersRouter from './routes/users'; 
+   
 const app = express();
 const IS_PROD = process.env.NODE_ENV === 'production';
 
@@ -138,6 +148,15 @@ app.use('/api/v1/camps', campsRouter);
 app.use('/api/v1/magazine', magazineRouter);
 app.use('/api/v1/discover', discoverRouter);
 app.use('/api/v1/pages', aboutPagesRouter);
+app.use('/api/v1/magazine-issues', magazineIssuesRouter);
+app.use('/api/v1/contact', contactRouter);
+app.use('/api/v1/accommodation', accommodationRouter);
+ app.use('/api/v1/home', homeRouter);
+ app.use('/api/v1/payments', paymentsRouter);
+app.use('/api/v1/devotees-admin', devoteeAdminRouter);
+app.use('/api/v1/registers', registersRouter);
+app.use('/api/v1/pos', posRoutes);
+app.use('/api/v1/users', usersRouter);
 
 // 7. Global Error Handler (Must be after all routes)
 app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {

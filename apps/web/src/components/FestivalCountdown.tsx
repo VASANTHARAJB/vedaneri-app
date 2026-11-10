@@ -3,14 +3,15 @@
 import { useEffect, useState } from 'react';
 import type { Dictionary } from '@/lib/dictionary';
 
-type Props = { t: Dictionary['festival'] };
+// startTime and endTime are optional ("17:00", "20:30"): the CMS (Home Page) can change the daily puja times.
+type Props = { t: Dictionary['festival']; startTime?: string; endTime?: string };
 
 const DAY = 86_400_000;
-// Festival times are in Indian Standard Time. Evening puja starts 5:00 PM on the first day, ends 8:30 PM on the last.
+// Festival times are in Indian Standard Time. Evening puja starts at startTime on the first day and ends at endTime on the last.
 const at = (iso: string, time: string) => Date.parse(`${iso}T${time}+05:30`);
 
 // Status line plus one circle per festival day: done (maroon), today (saffron), coming (outline).
-export default function FestivalCountdown({ t }: Props) {
+export default function FestivalCountdown({ t, startTime = '17:00', endTime = '20:30' }: Props) {
   const [now, setNow] = useState<number | null>(null);
   useEffect(() => {
     setNow(Date.now());
@@ -18,8 +19,8 @@ export default function FestivalCountdown({ t }: Props) {
     return () => clearInterval(id);
   }, []);
 
-  const start = at(t.start, '17:00:00');
-  const end = at(t.end, '20:30:00');
+  const start = at(t.start, `${startTime}:00`);
+  const end = at(t.end, `${endTime}:00`);
   const firstDay = at(t.start, '00:00:00');
   const total = Math.round((at(t.end, '00:00:00') - firstDay) / DAY) + 1;
 

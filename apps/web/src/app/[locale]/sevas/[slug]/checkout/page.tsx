@@ -37,6 +37,8 @@ interface FamilyMember {
   rasiOther?: string;
   relation: string;
   relationOther?: string;
+  isHead?: boolean; // head of the family (father / husband): others default to this gothram
+  gothramEdited?: boolean; // gothram was changed by hand, so head defaulting must not overwrite it
 }
 
 interface NoticeState {
@@ -77,7 +79,19 @@ const RELATIONS = [
   'Father (தந்தை)', 'Mother (தாய்)', 'Brother (சகோதரன்)', 'Sister (சகோதரி)', 'Other',
 ];
 
+const MAX_SANKALPAM_MEMBERS = 5;
 const QUICK_AMOUNTS = ['501', '1008', '2001', '5001'];
+
+// Copy the head's gothram to every other member whose gothram was not typed in by hand
+function applyHeadGothram(list: FamilyMember[]): FamilyMember[] {
+  const head = list.find((m) => m.isHead);
+  if (!head || !head.gothram) return list;
+  return list.map((m) =>
+    m === head || m.gothramEdited
+      ? m
+      : { ...m, gothram: head.gothram, gothramOther: head.gothram === 'Other' ? head.gothramOther || '' : '' }
+  );
+}
 const TOKEN_KEYS = ['devotee_token', 'token', 'auth_token', 'accessToken'];
 
 const INPUT_BASE =
@@ -193,6 +207,8 @@ export default function SevaCheckoutPage() {
   const [email, setEmail] = useState('');
   const [countryCode, setCountryCode] = useState('+91');
   const [phone, setPhone] = useState('');
+  // Mandatory choice: does the devotee want to give personal Sankalpam details? ('' = not chosen yet)
+  const [primaryChoice, setPrimaryChoice] = useState<'' | 'yes' | 'no'>('');
   const [primaryGothram, setPrimaryGothram] = useState('');
   const [primaryGothramOther, setPrimaryGothramOther] = useState('');
   const [primaryNakshathiram, setPrimaryNakshathiram] = useState('');
@@ -448,21 +464,44 @@ export default function SevaCheckoutPage() {
   // ---------------------------------------------------------------
   // Family members
   // ---------------------------------------------------------------
+  const atMemberLimit = familyMembers.length >= MAX_SANKALPAM_MEMBERS;
+
   const addFamilyMember = () => {
-    setFamilyMembers((prev) => [
-      ...prev,
-      {
-        title: 'Sri',
-        name: '',
-        gothram: primaryGothram || prev[0]?.gothram || '',
-        gothramOther: primaryGothramOther || prev[0]?.gothramOther || '',
-        nakshathiram: '',
-        rasi: '',
-        relation: 'Spouse (மனைவி / கணவர்)',
-      },
-    ]);
+    if (familyMembers.length >= MAX_SANKALPAM_MEMBERS) {
+      setMemberError(
+        tr(
+          `Only ${MAX_SANKALPAM_MEMBERS} members are allowed in the Sankalpam.`,
+          `சங்கல்பத்தில் அதிகபட்சம் ${MAX_SANKALPAM_MEMBERS} உறுப்பினர்கள் மட்டுமே சேர்க்க இயலும்.`
+        )
+      );
+      return;
+    }
+    setFamilyMembers((prev) => {
+      // New members start with the head's gothram; without a head, fall back to the first member's
+      const head = prev.find((m) => m.isHead) || prev[0];
+      return [
+        ...prev,
+        {
+          title: 'Sri',
+          name: '',
+          gothram: head?.gothram || '',
+          gothramOther: head?.gothram === 'Other' ? head?.gothramOther || '' : '',
+          nakshathiram: '',
+          rasi: '',
+          relation: 'Spouse (மனைவி / கணவர்)',
+        },
+      ];
+    });
     setActiveMember(familyMembers.length);
     setMemberError('');
+  };
+
+  // Mark one member as head of the family (only one at a time) and default the others to that gothram
+  const setHeadMember = (index: number, on: boolean) => {
+    setFamilyMembers((prev) => {
+      const next = prev.map((m, i) => ({ ...m, isHead: on && i === index }));
+      return on ? applyHeadGothram(next) : next;
+    });
   };
 
   const removeFamilyMember = (index: number) => {
@@ -474,8 +513,22 @@ export default function SevaCheckoutPage() {
 
   const updateFamilyMember = (index: number, field: keyof FamilyMember, val: string) => {
     setFamilyMembers((prev) => {
-      const copy = [...prev];
+      let copy = [...prev];
+      const isGothramField = field === 'gothram' || field === 'gothramOther';
       copy[index] = { ...copy[index], [field]: val };
+
+      if (isGothramField) {
+        // Typed by hand: remember it so the head's gothram never overwrites it later
+        if (!copy[index].isHead) copy[index].gothramEdited = true;
+        // The head's own gothram changed: pass it on to everyone not edited by hand
+        if (copy[index].isHead) copy = applyHeadGothram(copy);
+      }
+
+      // Choosing Father as the relation makes that member the head if no head is chosen yet
+      if (field === 'relation' && val.startsWith('Father') && !copy.some((m) => m.isHead)) {
+        copy[index] = { ...copy[index], isHead: true };
+        copy = applyHeadGothram(copy);
+      }
       return copy;
     });
   };
@@ -765,11 +818,29 @@ export default function SevaCheckoutPage() {
     if (!lastName.trim()) errs.lastName = tr('Please enter your last name.', 'கடைசி பெயரை உள்ளிடவும்.');
     if (!/^\S+@\S+\.\S+$/.test(email.trim())) errs.email = tr('Please enter a valid email address.', 'சரியான மின்னஞ்சல் முகவரியை உள்ளிடவும்.');
     if (phone.replace(/\D/g, '').length < 6) errs.phone = tr('Please enter a valid phone number.', 'சரியான மொபைல் எண்ணை உள்ளிடவும்.');
-    if (primaryGothram === 'Other' && !primaryGothramOther.trim()) errs.primaryGothram = tr('Please enter your gothram.', 'உங்கள் கோத்திரத்தை உள்ளிடவும்.');
-    if (primaryNakshathiram === 'Other' && !primaryNakshathiramOther.trim()) errs.primaryNakshathiram = tr('Please enter your nakshatram.', 'உங்கள் நட்சத்திரத்தை உள்ளிடவும்.');
-    if (primaryRasi === 'Other' && !primaryRasiOther.trim()) errs.primaryRasi = tr('Please enter your rasi.', 'உங்கள் ராசியை உள்ளிடவும்.');
+    if (!primaryChoice) {
+      errs.primaryChoice = tr(
+        'Please choose whether you want to give your Sankalpam details.',
+        'உங்கள் சங்கல்ப விபரங்களை வழங்க விரும்புகிறீர்களா என்பதைத் தேர்ந்தெடுக்கவும்.'
+      );
+    }
+    if (primaryChoice === 'yes') {
+      if (!primaryGothram) errs.primaryGothram = tr('Please select your gothram.', 'உங்கள் கோத்திரத்தைத் தேர்ந்தெடுக்கவும்.');
+      if (primaryGothram === 'Other' && !primaryGothramOther.trim()) errs.primaryGothram = tr('Please enter your gothram.', 'உங்கள் கோத்திரத்தை உள்ளிடவும்.');
+      if (primaryNakshathiram === 'Other' && !primaryNakshathiramOther.trim()) errs.primaryNakshathiram = tr('Please enter your nakshatram.', 'உங்கள் நட்சத்திரத்தை உள்ளிடவும்.');
+      if (primaryRasi === 'Other' && !primaryRasiOther.trim()) errs.primaryRasi = tr('Please enter your rasi.', 'உங்கள் ராசியை உள்ளிடவும்.');
+    }
 
-    const bad = findMemberProblem();
+    let bad = findMemberProblem();
+    if (!bad && familyMembers.length > MAX_SANKALPAM_MEMBERS) {
+      bad = {
+        index: MAX_SANKALPAM_MEMBERS,
+        message: tr(
+          `Only ${MAX_SANKALPAM_MEMBERS} members are allowed in the Sankalpam. Please remove ${familyMembers.length - MAX_SANKALPAM_MEMBERS}.`,
+          `சங்கல்பத்தில் அதிகபட்சம் ${MAX_SANKALPAM_MEMBERS} உறுப்பினர்கள். ${familyMembers.length - MAX_SANKALPAM_MEMBERS} பேரை நீக்கவும்.`
+        ),
+      };
+    }
     if (bad) {
       setActiveMember(bad.index);
       setMemberError(bad.message);
@@ -892,7 +963,7 @@ export default function SevaCheckoutPage() {
     ? `₹${finalAmount.toLocaleString('en-IN')} இப்போது செலுத்துக`
     : `Pay ₹${finalAmount.toLocaleString('en-IN')} Now`;
 
-  const primarySankalpamLine = [
+  const primarySankalpamLine = primaryChoice !== 'yes' ? '' : [
     primaryGothram ? (primaryGothram === 'Other' ? primaryGothramOther : primaryGothram) : '',
     primaryNakshathiram ? (primaryNakshathiram === 'Other' ? primaryNakshathiramOther : primaryNakshathiram) : '',
     primaryRasi ? (primaryRasi === 'Other' ? primaryRasiOther : primaryRasi) : '',
@@ -1052,12 +1123,78 @@ export default function SevaCheckoutPage() {
 
                   <div className="space-y-4 border-t border-sand pt-5">
                     <p className="text-sm font-bold uppercase tracking-[0.14em] text-maroon">
-                      {tr('Primary Devotee Sankalpam Details', 'முதன்மை பக்தர் சங்கல்ப விபரம்')}
+                      {tr('Primary Devotee Sankalpam Details', 'முதன்மை பக்தர் சங்கல்ப விபரம்')} *
                     </p>
 
+                    <fieldset>
+                      <legend className="mb-2 text-base font-bold text-charcoal">
+                        {tr(
+                          'Do you want to give your Gothram, Nakshatram and Rasi for the Sankalpam?',
+                          'சங்கல்பத்திற்கு உங்கள் கோத்திரம், நட்சத்திரம், ராசி விபரங்களை வழங்க விரும்புகிறீர்களா?'
+                        )}
+                      </legend>
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        {(
+                          [
+                            { key: 'yes', en: 'Yes, I want to give my details', ta: 'ஆம், விபரங்களை வழங்குகிறேன்' },
+                            { key: 'no', en: 'No, continue to the next step', ta: 'இல்லை, அடுத்த படிக்குச் செல்க' },
+                          ] as const
+                        ).map((opt) => (
+                          <label
+                            key={opt.key}
+                            className={`flex min-h-[52px] cursor-pointer items-center gap-3 rounded-md border px-4 py-3 text-base font-bold transition-colors ${
+                              primaryChoice === opt.key
+                                ? 'border-maroon bg-cream text-maroon'
+                                : fieldErrors.primaryChoice
+                                ? 'border-red-500 bg-white text-charcoal'
+                                : 'border-sand bg-white text-charcoal hover:border-maroon'
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name="primary-sankalpam-choice"
+                              value={opt.key}
+                              checked={primaryChoice === opt.key}
+                              onChange={() => {
+                                setPrimaryChoice(opt.key);
+                                setFieldErrors((f) => ({ ...f, primaryChoice: '', primaryGothram: '', primaryNakshathiram: '', primaryRasi: '' }));
+                                // Yes: bring in the saved details (the "Self" member) for any field still empty.
+                                // No: just hide the fields; saved values are kept so Yes can bring them back.
+                                if (opt.key === 'yes') {
+                                  const self =
+                                    familyMembers.find((m) => String(m.relation).includes('Self')) || familyMembers[0];
+                                  if (self) {
+                                    if (!primaryGothram && self.gothram) {
+                                      setPrimaryGothram(self.gothram);
+                                      setPrimaryGothramOther(self.gothramOther || '');
+                                    }
+                                    if (!primaryNakshathiram && self.nakshathiram) {
+                                      setPrimaryNakshathiram(self.nakshathiram);
+                                      setPrimaryNakshathiramOther(self.nakshathiramOther || '');
+                                    }
+                                    if (!primaryRasi && self.rasi) {
+                                      setPrimaryRasi(self.rasi);
+                                      setPrimaryRasiOther(self.rasiOther || '');
+                                    }
+                                  }
+                                }
+                              }}
+                              className="h-5 w-5 cursor-pointer accent-maroon"
+                            />
+                            <span>{tr(opt.en, opt.ta)}</span>
+                          </label>
+                        ))}
+                      </div>
+                      {fieldErrors.primaryChoice && (
+                        <p className="mt-1.5 text-sm font-semibold text-red-700">{fieldErrors.primaryChoice}</p>
+                      )}
+                    </fieldset>
+
+                    {primaryChoice === 'yes' && (
+                    <>
                     <div>
-                      <Field label={tr('Gothram', 'கோத்திரம்')}>
-                        <Select value={primaryGothram} onChange={(e) => setPrimaryGothram(e.target.value)}>
+                      <Field label={tr('Gothram *', 'கோத்திரம் *')} error={fieldErrors.primaryGothram && primaryGothram !== 'Other' ? fieldErrors.primaryGothram : undefined}>
+                        <Select value={primaryGothram} onChange={(e) => setPrimaryGothram(e.target.value)} hasError={!!fieldErrors.primaryGothram}>
                           <option value="">{tr('-- Select Gothram --', '-- கோத்திரம் தேர்வு செய்க --')}</option>
                           {GOTHRAMS.map((g) => (
                             <option key={g} value={g}>{g}</option>
@@ -1131,6 +1268,8 @@ export default function SevaCheckoutPage() {
                         )}
                       </div>
                     </div>
+                    </>
+                    )}
                   </div>
                 </div>
 
@@ -1170,11 +1309,18 @@ export default function SevaCheckoutPage() {
                     <button
                       type="button"
                       onClick={addFamilyMember}
-                      className="min-h-[44px] cursor-pointer rounded-md border border-dashed border-maroon bg-white px-4 text-[15px] font-bold text-maroon transition-colors hover:bg-cream"
+                      disabled={atMemberLimit}
+                      className="min-h-[44px] cursor-pointer rounded-md border border-dashed border-maroon bg-white px-4 text-[15px] font-bold text-maroon transition-colors hover:bg-cream disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-white"
                     >
                       + {tr('Add Member', 'உறுப்பினர் சேர்')}
                     </button>
                   </div>
+                  <p className="text-sm font-semibold text-charcoal/65">
+                    {tr(
+                      `${familyMembers.length} of ${MAX_SANKALPAM_MEMBERS} members added (maximum ${MAX_SANKALPAM_MEMBERS} allowed).`,
+                      `${familyMembers.length} / ${MAX_SANKALPAM_MEMBERS} உறுப்பினர்கள் சேர்க்கப்பட்டுள்ளனர் (அதிகபட்சம் ${MAX_SANKALPAM_MEMBERS}).`
+                    )}
+                  </p>
 
                   {memberError && (
                     <p role="alert" className="rounded-md border border-red-200 bg-red-50 p-3 text-base font-semibold text-red-700">
@@ -1219,6 +1365,24 @@ export default function SevaCheckoutPage() {
                           />
                         </Field>
                       </div>
+
+                      <label className="flex cursor-pointer items-start gap-3 rounded-md border border-sand bg-white p-3 text-[15px] font-semibold text-charcoal">
+                        <input
+                          type="checkbox"
+                          checked={!!current.isHead}
+                          onChange={(e) => setHeadMember(safeActive, e.target.checked)}
+                          className="mt-0.5 h-5 w-5 shrink-0 cursor-pointer accent-maroon"
+                        />
+                        <span>
+                          {tr('This member is the head of the family (father / husband)', 'இவர் குடும்பத் தலைவர் (தந்தை / கணவர்)')}
+                          <span className="mt-0.5 block text-sm font-normal text-charcoal/65">
+                            {tr(
+                              'The other members will get this gothram by default. You can still change any member\'s gothram.',
+                              'மற்ற உறுப்பினர்களுக்கு இதே கோத்திரம் இயல்பாக வரும். எந்த உறுப்பினரின் கோத்திரத்தையும் மாற்றலாம்.'
+                            )}
+                          </span>
+                        </span>
+                      </label>
 
                       <div>
                         <Field label={tr('Gothram *', 'கோத்திரம் *')}>

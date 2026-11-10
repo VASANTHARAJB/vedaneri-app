@@ -43,6 +43,7 @@ router.post('/login', async (req: Request, res: Response) => {
       role: user.role,
     };
 
+    // The login lasts 24 hours; after that the CMS signs out and asks for the password again
     const token = jwt.sign(tokenPayload, config.jwtSecret, { expiresIn: '24h' });
 
     return res.json({
@@ -55,11 +56,24 @@ router.post('/login', async (req: Request, res: Response) => {
   }
 });
 
+// Who am I right now. Read from the database so a changed role or a deactivated login shows up at once.
 router.get('/me', (req: Request, res: Response, next) => {
   authenticate(req as AuthenticatedRequest, res, next);
-}, (req: Request, res: Response) => {
+}, async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
-  return res.json({ user: authReq.user });
+  try {
+    const id = String((authReq.user as any)?.id || '');
+    if (!id) return res.status(401).json({ message: 'Please sign in again.' });
+    const [rows]: any = await pool.query('SELECT id, email, full_name, role, is_active FROM users WHERE id = ? LIMIT 1', [id]);
+    const u = rows?.[0];
+    if (!u) return res.status(401).json({ message: 'Please sign in again.' });
+    if (Number(u.is_active) === 0) return res.status(403).json({ message: 'Account is deactivated. Contact administrator.' });
+    res.setHeader('Cache-Control', 'no-store');
+    return res.json({ user: { id: u.id, email: u.email, full_name: u.full_name, role: u.role } });
+  } catch (e: any) {
+    console.error('Me error:', e?.message || e);
+    return res.status(500).json({ message: 'Could not check your login.' });
+  }
 });
 
 export default router;

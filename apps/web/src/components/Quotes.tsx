@@ -3,19 +3,21 @@
 import { useEffect, useState } from 'react';
 import type { Dictionary } from '@/lib/dictionary';
 
+// attribution is optional: the name shown under the quote. The CMS (Home Page) can supply it.
 type Props = {
   t: Dictionary['quotes'] & {
     attribution?: string;
   };
+  attribution?: string;
 };
 
 const pad = (n: number) => String(n).padStart(2, '0');
 
-export default function Quotes({ t }: Props) {
+export default function Quotes({ t, attribution }: Props) {
   const [i, setI] = useState(0);
   const [paused, setPaused] = useState(false);
   const n = t.items.length;
-  const attribution = t.attribution ?? '';
+  const who = attribution ?? t.attribution ?? '';
 
   useEffect(() => {
     if (n < 2 || paused) return;
@@ -23,6 +25,8 @@ export default function Quotes({ t }: Props) {
     const id = setInterval(() => setI((v) => (v + 1) % n), 9000);
     return () => clearInterval(id);
   }, [n, paused]);
+
+  if (n === 0) return null;
 
   const go = (d: number) => setI((v) => (v + d + n) % n);
   const btn =
@@ -34,6 +38,8 @@ export default function Quotes({ t }: Props) {
       className="relative isolate overflow-hidden bg-maroon py-16 text-white sm:py-24"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
+      onFocus={() => setPaused(true)}
+      onBlur={() => setPaused(false)}
     >
       {/* Faint mandala watermark */}
       <svg aria-hidden="true" viewBox="0 0 200 200" className="absolute -right-24 -top-24 -z-10 h-[28rem] w-[28rem] text-white/[0.06]" fill="none" stroke="currentColor" strokeWidth="1.2">
@@ -56,13 +62,15 @@ export default function Quotes({ t }: Props) {
             key={i}
             className="animate-fade-up font-display text-2xl font-medium leading-snug text-white motion-reduce:animate-none sm:text-3xl lg:text-4xl"
           >
-            {t.items[i].text}
+            {t.items[i % n].text}
           </blockquote>
-          <figcaption className="mt-8 flex items-center justify-center gap-3 text-white/90">
-            <span aria-hidden="true" className="h-px w-10 bg-saffron" />
-            <span className="font-semibold">{t.attribution}</span>
-            <span aria-hidden="true" className="h-px w-10 bg-saffron" />
-          </figcaption>
+          {who && (
+            <figcaption className="mt-8 flex items-center justify-center gap-3 text-white/90">
+              <span aria-hidden="true" className="h-px w-10 bg-saffron" />
+              <span className="font-semibold">{who}</span>
+              <span aria-hidden="true" className="h-px w-10 bg-saffron" />
+            </figcaption>
+          )}
         </figure>
 
         {n > 1 && (
@@ -71,7 +79,7 @@ export default function Quotes({ t }: Props) {
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg>
             </button>
             <p className="font-display text-lg tabular-nums text-white/80" aria-hidden="true">
-              <span className="text-2xl font-semibold text-saffron">{pad(i + 1)}</span> / {pad(n)}
+              <span className="text-2xl font-semibold text-saffron">{pad((i % n) + 1)}</span> / {pad(n)}
             </p>
             <button type="button" onClick={() => go(1)} aria-label={t.next} className={btn}>
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>

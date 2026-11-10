@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import type { DonationFund } from '@/type/donation';
 import { rupees } from '@/lib/format';
+import PanchangamDayCard from '@/components/sevas/PanchangamDayCard';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
 const TOKEN_KEYS = ['devotee_token', 'token', 'auth_token', 'accessToken'];
@@ -299,6 +300,9 @@ export default function DonationCalendarCard({ fund, locale }: { fund: DonationF
                 </div>
               </div>
             </div>
+
+            {/* Tamil panchangam of the selected English date */}
+            {selected && <PanchangamDayCard date={selected} isTa={isTa} />}
 
             <button
               type="button"

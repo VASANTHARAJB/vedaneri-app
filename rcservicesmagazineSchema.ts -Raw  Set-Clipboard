@@ -1,0 +1,17 @@
+[35mapps/api/src/index.ts[m[36m:[m[32m29[m[36m:[mimport { ensureM[1;31magazine[mTables } from './services/m[1;31magazine[mSchema';
+[35mapps/api/src/index.ts[m[36m:[m[32m30[m[36m:[mimport m[1;31magazine[mRouter, { syncM[1;31magazine[m } from './routes/m[1;31magazine[m';
+[35mapps/api/src/index.ts[m[36m:[m[32m34[m[36m:[mimport m[1;31magazine[mIssuesRouter from './routes/m[1;31magazine[mIssues';
+[35mapps/api/src/index.ts[m[36m:[m[32m95[m[36m:[m// TEMPORARY: open http://localhost:4000/api/v1/m[1;31magazine[m-check in the browser.
+[35mapps/api/src/index.ts[m[36m:[m[32m96[m[36m:[m// It shows exactly which m[1;31magazine[m step fails and the database's own message. Remove it once the page works.
+[35mapps/api/src/index.ts[m[36m:[m[32m98[m[36m:[m  app.get('/api/v1/m[1;31magazine[m-check', async (_req: Request, res: Response) => {
+[35mapps/api/src/index.ts[m[36m:[m[32m108[m[36m:[m    await step('create tables', async () => ((await ensureM[1;31magazine[mTables()) ? 'ready' : 'not ready, see the API terminal'));
+[35mapps/api/src/index.ts[m[36m:[m[32m109[m[36m:[m    await step('read issues', async () => { const [r]: any = await pool.query('SELECT id FROM m[1;31magazine[m_issues LIMIT 1'); return `${r.length} row`; });
+[35mapps/api/src/index.ts[m[36m:[m[32m112[m[36m:[m        `SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'm[1;31magazine[m_issues'`
+[35mapps/api/src/index.ts[m[36m:[m[32m116[m[36m:[m    await step('read plans', async () => { const [r]: any = await pool.query('SELECT id FROM m[1;31magazine[m_plans LIMIT 1'); return `${r.length} row`; });
+[35mapps/api/src/index.ts[m[36m:[m[32m117[m[36m:[m    await step('read subscriptions', async () => { const [r]: any = await pool.query('SELECT id FROM m[1;31magazine[m_subscriptions LIMIT 1'); return `${r.length} row`; });
+[35mapps/api/src/index.ts[m[36m:[m[32m139[m[36m:[mapp.use('/api/v1/m[1;31magazine[m', m[1;31magazine[mRouter);
+[35mapps/api/src/index.ts[m[36m:[m[32m142[m[36m:[mapp.use('/api/v1/m[1;31magazine[m-issues', m[1;31magazine[mIssuesRouter);
+[35mapps/api/src/index.ts[m[36m:[m[32m173[m[36m:[m  // M[1;31magazine[m: expiry, unpaid orders and renewal reminders
+[35mapps/api/src/index.ts[m[36m:[m[32m174[m[36m:[m  const runM[1;31magazine[mSync = () => syncM[1;31magazine[m().catch((e) => console.error('[M[1;31magazine[mSync]', e?.message || e));
+[35mapps/api/src/index.ts[m[36m:[m[32m175[m[36m:[m  setTimeout(runM[1;31magazine[mSync, 25_000);
+[35mapps/api/src/index.ts[m[36m:[m[32m176[m[36m:[m  setInterval(runM[1;31magazine[mSync, 60_000);

@@ -1,15 +1,31 @@
 import Link from 'next/link';
-import type { ReactElement } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import type { Locale } from '@/lib/i18n';
 import type { Dictionary } from '@/lib/dictionary';
 import Reveal from './Reveal';
 import SectionTitle from './SectionTitle';
+import type { HeroLink } from './Hero';
+
+// An event and a support card, as the CMS (Home Page) can supply them. A link here is already worked out by the page.
+export type CalEvent = { date: string; name: string; href?: HeroLink };
+export type Sponsor = { key: string; title: string; text: string; href?: HeroLink };
 
 type Props = {
   locale: Locale;
   calendar: Dictionary['calendar'];
   support: Dictionary['support'];
+  // All optional. When the CMS has a list, it is used instead of the one in the dictionary.
+  events?: CalEvent[];
+  sponsors?: Sponsor[];
+  eventsLink?: HeroLink; // where an event goes when it has no link of its own, and "View Complete Calendar"
+  donateLink?: HeroLink; // where "Sponsor" goes when a card has no link of its own
 };
+
+// A link to a page of this site, or to another website
+function Go({ to, className, children }: { to: HeroLink; className: string; children: ReactNode }) {
+  if (!to.external) return <Link href={to.href} className={className}>{children}</Link>;
+  return <a href={to.href} className={className} {...(/^https?:/i.test(to.href) ? { target: '_blank', rel: 'noopener noreferrer' } : {})}>{children}</a>;
+}
 
 const ICONS: Record<string, ReactElement> = {
   annadhanam: (
@@ -20,6 +36,10 @@ const ICONS: Record<string, ReactElement> = {
   ),
   veda: (
     <path d="M12 6c-2-1.5-5-2-8-2v14c3 0 6 .5 8 2 2-1.5 5-2 8-2V4c-3 0-6 .5-8 2zM12 6v14" />
+  ),
+  // For a support card added in the CMS
+  general: (
+    <path d="M12 3c.5 2.2 3 3.6 3 6.2a3 3 0 0 1-6 0c0-1.4.6-2.2 1.2-3 .3.8.7 1.2 1.2 1.4C11.6 6.2 11.8 4.6 12 3zM5 15h14l-2 5H7l-2-5z" />
   ),
 };
 
@@ -40,7 +60,7 @@ const Arrow = () => (
   </svg>
 );
 
-export default function CalendarSupport({ locale, calendar, support }: Props) {
+export default function CalendarSupport({ locale, calendar, support, events, sponsors, eventsLink, donateLink }: Props) {
   const tag = locale === 'ta' ? 'ta-IN' : 'en-IN';
   const fmt = new Intl.DateTimeFormat(tag, {
     timeZone: 'UTC',
@@ -48,9 +68,14 @@ export default function CalendarSupport({ locale, calendar, support }: Props) {
     month: 'long',
     year: 'numeric',
   });
-  const today = new Date().toISOString().slice(0, 10);
-  // Only upcoming days are shown. The CMS will supply this list later.
-  const upcoming = calendar.items.filter((e) => e.date >= today).slice(0, 4);
+  // Today's date in India (UTC+5:30), so an event is still shown on its own day
+  const today = new Date(Date.now() + 19_800_000).toISOString().slice(0, 10);
+  const toEvents: HeroLink = eventsLink ?? { href: `/${locale}/events`, external: false };
+  const toDonate: HeroLink = donateLink ?? { href: `/${locale}/donate`, external: false };
+  // Only upcoming days are shown, the nearest first
+  const all: CalEvent[] = events ?? calendar.items;
+  const upcoming = all.filter((e) => e.date >= today).sort((a, b) => a.date.localeCompare(b.date)).slice(0, 4);
+  const cards: Sponsor[] = sponsors ?? support.items;
 
   return (
     <section className="border-t border-rose bg-white pt-16 pb-6 sm:pt-24 sm:pb-10">
@@ -65,10 +90,10 @@ export default function CalendarSupport({ locale, calendar, support }: Props) {
           />
           <ul className="mt-8 space-y-3">
             {upcoming.map((e, n) => (
-              <li key={e.date}>
+              <li key={`${e.date}-${n}`}>
                 <Reveal delay={n * 80}>
-                  <Link
-                    href={`/${locale}/events`}
+                  <Go
+                    to={e.href ?? toEvents}
                     className="group flex items-center justify-between gap-4 rounded-lg border border-rose bg-white px-5 py-3.5 transition duration-300 hover:border-saffron hover:shadow-md"
                   >
                     <span className="min-w-0">
@@ -86,18 +111,18 @@ export default function CalendarSupport({ locale, calendar, support }: Props) {
                       {calendar.details}
                       <Arrow />
                     </span>
-                  </Link>
+                  </Go>
                 </Reveal>
               </li>
             ))}
           </ul>
-          <Link
-            href={`/${locale}/events`}
+          <Go
+            to={toEvents}
             className="group mt-6 inline-flex items-center gap-1 text-sm font-bold text-maroon underline decoration-saffron decoration-2 underline-offset-4"
           >
             {calendar.viewAll}
             <Arrow />
-          </Link>
+          </Go>
         </div>
 
         {/* Direct support */}
@@ -109,8 +134,8 @@ export default function CalendarSupport({ locale, calendar, support }: Props) {
             align="left"
           />
           <ul className="mt-8 space-y-3">
-            {support.items.map((s, n) => (
-              <li key={s.key}>
+            {cards.map((s, n) => (
+              <li key={`${s.key}-${n}`}>
                 <Reveal delay={n * 80}>
                   <div className="flex items-center gap-4 rounded-lg border border-rose bg-white px-5 py-4 transition duration-300 hover:border-saffron hover:shadow-md">
                     <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-rose text-maroon">
@@ -125,19 +150,19 @@ export default function CalendarSupport({ locale, calendar, support }: Props) {
                         strokeLinejoin="round"
                         aria-hidden="true"
                       >
-                        {ICONS[s.key]}
+                        {ICONS[s.key] ?? ICONS.general}
                       </svg>
                     </span>
                     <div className="min-w-0 flex-1">
                       <h3 className="font-display text-xl font-semibold">{s.title}</h3>
                       <p className="mt-0.5 text-sm text-charcoal/85">{s.text}</p>
                     </div>
-                    <Link
-                      href={`/${locale}/donate`}
+                    <Go
+                      to={s.href ?? toDonate}
                       className="shrink-0 rounded-md bg-saffron px-4 py-2 text-sm font-bold text-charcoal transition duration-300 hover:-translate-y-0.5 hover:shadow-md"
                     >
                       {support.sponsor}
-                    </Link>
+                    </Go>
                   </div>
                 </Reveal>
               </li>

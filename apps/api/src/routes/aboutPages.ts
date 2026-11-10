@@ -8,6 +8,7 @@ import { pool } from '../db';
 import { authenticate } from '../middleware/auth';
 import { AuthenticatedRequest } from '../types';
 
+
 // Content for the About pages. One row per page, chosen by its slug.
 const router = Router();
 const IS_PROD = process.env.NODE_ENV === 'production';
