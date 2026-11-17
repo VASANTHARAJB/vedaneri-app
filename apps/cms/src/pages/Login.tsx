@@ -44,7 +44,7 @@ export default function Login() {
     } catch { return ''; }
   });
 
-  if (user) return <Navigate to={loc.state?.from ?? `/${homeSlug(user.role)}`} replace />;
+  if (user) return <Navigate to={loc.state?.from ?? `/${homeSlug(user.role, user.page_access)}`} replace />;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();

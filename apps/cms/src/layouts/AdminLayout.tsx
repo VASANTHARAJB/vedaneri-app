@@ -174,8 +174,9 @@ export default function AdminLayout() {
   }, [location.pathname]);
 
   const role = user?.role;
-  const allowedHere = canOpen(role, currentSlug);
-  const canSee = (tab: NavTab) => canOpen(role, TAB_TO_SLUG[tab] || tab);
+  const pages = user?.page_access;
+  const allowedHere = canOpen(role, currentSlug, pages);
+  const canSee = (tab: NavTab) => canOpen(role, TAB_TO_SLUG[tab] || tab, pages);
 
   const handleSelectTab = (tab: NavTab) => {
     const slug = TAB_TO_SLUG[tab] || tab;
@@ -185,7 +186,7 @@ export default function AdminLayout() {
   const quickRaw = quickActionFor(activeTab);
   // The top-right shortcut must lead to a page this login can open
   const quickSlug = quickRaw.path.replace(/^\//, '').split('?')[0];
-  const quick = canOpen(role, quickSlug) ? quickRaw : { label: 'My home page', path: `/${homeSlug(role)}` };
+  const quick = canOpen(role, quickSlug, pages) ? quickRaw : { label: 'My home page', path: `/${homeSlug(role, pages)}` };
   const crumbs = activeTab.startsWith('discover-')
     ? ['Discover', TAB_TITLES[activeTab]]
     : activeTab.startsWith('about-')
@@ -195,7 +196,7 @@ export default function AdminLayout() {
   if (loading) return <div className="p-8 text-sm text-slate-500">Loading...</div>;
   if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   // A login that may not open this page is sent to its own home page
-  if (!allowedHere) return <Navigate to={`/${homeSlug(role)}`} replace />;
+  if (!allowedHere) return <Navigate to={`/${homeSlug(role, pages)}`} replace />;
 
   return (
     <div className="flex min-h-screen bg-white font-sans text-[#3b0d0d] antialiased selection:bg-[#fde7b0] selection:text-[#3b0d0d]">
