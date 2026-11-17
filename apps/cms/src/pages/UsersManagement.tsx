@@ -129,7 +129,6 @@ export default function UsersManagement() {
   const [showPw, setShowPw] = useState(false);
   const [errs, setErrs] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
-  const [pagesTouched, setPagesTouched] = useState(false); // once pages are ticked by hand, changing the role no longer resets them
 
   const [pwFor, setPwFor] = useState<Row | null>(null);
   const [newPw, setNewPw] = useState('');
@@ -184,20 +183,20 @@ export default function UsersManagement() {
   const activeSupers = rows.filter((r) => r.role === 'superadmin' && active(r)).length;
 
   function openAdd() {
-    setEditing(null); setForm(blank); setPagesTouched(false); setErrs({}); setShowPw(false); setOpen(true);
+    setEditing(null); setForm(blank); setErrs({}); setShowPw(false); setOpen(true);
   }
   function openEdit(r: Row) {
     setEditing(r);
     setForm({ full_name: r.full_name || '', email: r.email, phone: r.phone || '', role: r.role, password: '', is_active: active(r), pages: r.page_access?.length ? r.page_access : roleDefaultPages(r.role) });
-    setPagesTouched(!!r.page_access?.length);
     setErrs({}); setShowPw(false); setOpen(true);
   }
   const set = (k: keyof FormState, v: string | boolean) => { setForm((f) => ({ ...f, [k]: v })); setErrs((e) => ({ ...e, [k]: '', form: '' })); };
+  // Choosing a role always ticks that role's own pages; they can be changed afterwards
   const pickRole = (role: string) => {
-    setForm((f) => ({ ...f, role, pages: pagesTouched ? f.pages : roleDefaultPages(role) }));
+    setForm((f) => ({ ...f, role, pages: roleDefaultPages(role) }));
     setErrs((e) => ({ ...e, role: '', form: '' }));
   };
-  const setPages = (pages: string[]) => { setPagesTouched(true); setForm((f) => ({ ...f, pages: ordered(pages) })); setErrs((e) => ({ ...e, page_access: '', form: '' })); };
+  const setPages = (pages: string[]) => { setForm((f) => ({ ...f, pages: ordered(pages) })); setErrs((e) => ({ ...e, page_access: '', form: '' })); };
   const toggleSlugs = (slugs: string[], on: boolean) => setPages(on ? Array.from(new Set([...form.pages, ...slugs])) : form.pages.filter((s) => !slugs.includes(s)));
   const fullAccess = isAdminRole(form.role);
   // Same as the role's own pages: nothing is stored, so later changes to the role's pages apply by themselves
@@ -416,7 +415,7 @@ export default function UsersManagement() {
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                       <button type="button" className="btn sm" onClick={() => setPages(ALL_PAGES)}>Select all</button>
                       <button type="button" className="btn sm" onClick={() => setPages([])}>Clear</button>
-                      <button type="button" className="btn sm" onClick={() => { setPages(roleDefaultPages(form.role)); setPagesTouched(false); }}>Use the role's pages</button>
+                      <button type="button" className="btn sm" onClick={() => setPages(roleDefaultPages(form.role))}>Use the role's pages</button>
                     </div>
                   </div>
                   <div className="pages-scroll">
