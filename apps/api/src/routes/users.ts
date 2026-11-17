@@ -2,7 +2,7 @@ import express, { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { randomUUID } from 'crypto';
 import { pool } from '../db';
-import { requireStaff, invalidateStaff, Staff } from '../middleware/roleAccess';
+import { requireStaff, invalidateStaff, Staff, pageCols, parsePages, ALL_PAGE_SLUGS, ADMINS } from '../middleware/roleAccess';
 
 // Staff logins for the CMS. Super admin only.
 // Mount in index.ts:  app.use('/api/v1/users', usersRouter);
@@ -26,6 +26,20 @@ function passwordProblem(p: string): string {
 }
 
 const COLS = 'id, email, phone, full_name, role, is_active, created_at, updated_at';
+const cols = async () => COLS + (await pageCols());
+const shape = (r: any) => (r ? { ...r, page_access: parsePages(r.page_access) } : r);
+
+// The ticked pages from the request: null = use the pages of the role; otherwise a list of known pages.
+// Administrators always open everything, so nothing is stored for them.
+function pagesFrom(v: unknown, role: string): { value: string | null; error?: string } {
+  if (ADMINS.includes(role) || v === null || v === undefined) return { value: null };
+  if (!Array.isArray(v)) return { value: null, error: 'Choose the pages again.' };
+  const list = Array.from(new Set(v.filter((x): x is string => typeof x === 'string')));
+  if (list.some((x) => !ALL_PAGE_SLUGS.includes(x))) return { value: null, error: 'One of the chosen pages is not known. Reload the page and try again.' };
+  if (!list.length) return { value: null, error: 'Tick at least one page, or use the pages of the role.' };
+  return { value: JSON.stringify(ALL_PAGE_SLUGS.filter((x) => list.includes(x))) };
+}
+const NEEDS_SQL = 'The users table needs the one-time update in apps/api/sql/user-page-access.sql.';
 
 // Another active super admin must always remain
 async function otherActiveSuperadmins(exceptId: string): Promise<number> {
@@ -36,10 +50,10 @@ async function otherActiveSuperadmins(exceptId: string): Promise<number> {
 router.get('/', async (_req: Request, res: Response) => {
   try {
     const [rows]: any = await pool.query(
-      `SELECT ${COLS} FROM users WHERE role IN (${STAFF_ROLES.map(() => '?').join(',')}) ORDER BY created_at ASC`,
+      `SELECT ${await cols()} FROM users WHERE role IN (${STAFF_ROLES.map(() => '?').join(',')}) ORDER BY created_at ASC`,
       STAFF_ROLES
     );
-    return res.json({ users: rows });
+    return res.json({ users: rows.map(shape) });
   } catch (e: any) {
     console.error('Users list error:', e?.message || e);
     return res.status(500).json({ message: 'Could not load the users.' });
@@ -60,19 +74,29 @@ router.post('/', async (req: Request, res: Response) => {
     if (!NEW_ROLES.includes(role)) return res.status(400).json({ message: 'Choose a role.', field: 'role' });
     const pw = passwordProblem(password);
     if (pw) return res.status(400).json({ message: pw, field: 'password' });
+    const pa = pagesFrom(req.body?.page_access, role);
+    if (pa.error) return res.status(400).json({ message: pa.error, field: 'page_access' });
+    if (pa.value && !(await pageCols())) return res.status(500).json({ message: NEEDS_SQL });
 
     const [dup]: any = await pool.query('SELECT id FROM users WHERE email = ? LIMIT 1', [email]);
     if (dup?.length) return res.status(409).json({ message: 'A login with this email already exists.', field: 'email' });
 
     const id = randomUUID();
     const hash = await bcrypt.hash(password, 10);
-    await pool.query(
-      'INSERT INTO users (id, email, phone, password_hash, full_name, role, is_active) VALUES (?, ?, ?, ?, ?, ?, 1)',
-      [id, email, phone || null, hash, full_name, role]
-    );
-    console.log(`[Users] ${me(req).email} created ${email} (${role})`);
-    const [rows]: any = await pool.query(`SELECT ${COLS} FROM users WHERE id = ?`, [id]);
-    return res.status(201).json({ user: rows[0] });
+    if (pa.value) {
+      await pool.query(
+        'INSERT INTO users (id, email, phone, password_hash, full_name, role, is_active, page_access) VALUES (?, ?, ?, ?, ?, ?, 1, ?)',
+        [id, email, phone || null, hash, full_name, role, pa.value]
+      );
+    } else {
+      await pool.query(
+        'INSERT INTO users (id, email, phone, password_hash, full_name, role, is_active) VALUES (?, ?, ?, ?, ?, ?, 1)',
+        [id, email, phone || null, hash, full_name, role]
+      );
+    }
+    console.log(`[Users] ${me(req).email} created ${email} (${role}${pa.value ? ', own pages: ' + pa.value : ''})`);
+    const [rows]: any = await pool.query(`SELECT ${await cols()} FROM users WHERE id = ?`, [id]);
+    return res.status(201).json({ user: shape(rows[0]) });
   } catch (e: any) {
     if (e?.code === 'ER_DUP_ENTRY') return res.status(409).json({ message: 'A login with this email or phone already exists.' });
     if (e?.code === 'ER_BAD_NULL_ERROR' || e?.code === 'ER_WARN_DATA_OUT_OF_RANGE' || e?.code === 'WARN_DATA_TRUNCATED' || e?.code === 'ER_TRUNCATED_WRONG_VALUE_FOR_FIELD') {
@@ -87,7 +111,7 @@ router.post('/', async (req: Request, res: Response) => {
 router.patch('/:id', async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
-    const [found]: any = await pool.query(`SELECT ${COLS} FROM users WHERE id = ? LIMIT 1`, [id]);
+    const [found]: any = await pool.query(`SELECT ${await cols()} FROM users WHERE id = ? LIMIT 1`, [id]);
     const target = found?.[0];
     if (!target || !STAFF_ROLES.includes(String(target.role))) return res.status(404).json({ message: 'User not found.' });
 
@@ -129,12 +153,23 @@ router.patch('/:id', async (req: Request, res: Response) => {
       sets.push('password_hash = ?'); vals.push(await bcrypt.hash(pw, 10));
     }
 
+    // Pages: sent when changed. An administrator role clears them, because administrators open everything.
+    if (req.body?.page_access !== undefined || (newRole !== String(target.role) && ADMINS.includes(newRole))) {
+      const pa = pagesFrom(req.body?.page_access, newRole);
+      if (pa.error) return res.status(400).json({ message: pa.error, field: 'page_access' });
+      if (!(await pageCols())) {
+        if (pa.value) return res.status(500).json({ message: NEEDS_SQL });
+      } else {
+        sets.push('page_access = ?'); vals.push(pa.value);
+      }
+    }
+
     if (!sets.length) return res.status(400).json({ message: 'Nothing to change.' });
     await pool.query(`UPDATE users SET ${sets.join(', ')}, updated_at = NOW() WHERE id = ?`, [...vals, id]);
     invalidateStaff(id);
     console.log(`[Users] ${me(req).email} changed ${target.email}: ${sets.map((s) => s.split(' ')[0]).join(', ')}`);
-    const [rows]: any = await pool.query(`SELECT ${COLS} FROM users WHERE id = ?`, [id]);
-    return res.json({ user: rows[0] });
+    const [rows]: any = await pool.query(`SELECT ${await cols()} FROM users WHERE id = ?`, [id]);
+    return res.json({ user: shape(rows[0]) });
   } catch (e: any) {
     if (e?.code === 'WARN_DATA_TRUNCATED' || e?.code === 'ER_BAD_NULL_ERROR' || e?.code === 'ER_TRUNCATED_WRONG_VALUE_FOR_FIELD') {
       console.error('Users update error (run apps/api/sql/staff-roles.sql):', e?.sqlMessage || e?.message);

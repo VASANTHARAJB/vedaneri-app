@@ -21,7 +21,7 @@ export const when = (iso: string) => {
 };
 export const dnum = (d: string) => Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10)) / 86_400_000;
 export const dlabel = (n: number, month = false) =>
-  new Date(n * 86_400_000).toLocaleDateString('en-IN', month ? { month: 'short', year: '2-digit', timeZone: 'UTC' } : { day: 'numeric', month: 'short', timeZone: 'UTC' });
+  new Date(n * 86_400_000).toLocaleDateString('en-IN', month ? { month: 'short', year: 'numeric', timeZone: 'UTC' } : { day: 'numeric', month: 'short', timeZone: 'UTC' });
 
 export type Preset = 'month' | '30' | 'year' | 'all' | 'custom';
 export function rangeOf(p: Preset): { from: string; to: string } {
@@ -142,12 +142,19 @@ export function RevenueChart({ data, mode, series }: { data: Bucket[]; mode: 'ba
             </g>
           );
         })}
-        {mode === 'area' && (
+        {mode === 'area' && data.length > 1 && (
           <>
             <polygon points={`${cx(0)},${yOf(0)} ${pts.join(' ')} ${cx(data.length - 1)},${yOf(0)}`} fill="url(#pdxArea)" />
             <polyline points={pts.join(' ')} fill="none" stroke="#7a1c1c" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
             {data.map((d, i) => (data.length <= 40 || i === hi) && <circle key={d.key} cx={cx(i)} cy={yOf(d.total)} r={i === hi ? 5 : 3} fill="#fff" stroke="#7a1c1c" strokeWidth="2" tabIndex={0} role="img" aria-label={`${d.label}: ${inr(d.total)}`} onFocus={() => setHi(i)} onBlur={() => setHi(null)} />)}
           </>
+        )}
+        {mode === 'area' && data.length === 1 && (
+          <g tabIndex={0} role="img" aria-label={`${data[0].label}: ${inr(data[0].total)}`} onFocus={() => setHi(0)} onBlur={() => setHi(null)}>
+            <line x1={m.l} x2={w - m.r} y1={yOf(data[0].total)} y2={yOf(data[0].total)} stroke="#7a1c1c" strokeWidth="2" strokeDasharray="5 5" opacity=".45" />
+            <circle cx={cx(0)} cy={yOf(data[0].total)} r={7} fill="#fff" stroke="#7a1c1c" strokeWidth="3" />
+            <text x={cx(0)} y={yOf(data[0].total) - 14} textAnchor="middle" fontSize="12" fontWeight="800" fill="#3b0d0d">{short(data[0].total)}</text>
+          </g>
         )}
         {hi !== null && <line x1={cx(hi)} x2={cx(hi)} y1={m.t} y2={H - m.b} stroke="#c9ccd3" strokeDasharray="3 4" />}
       </svg>
@@ -167,7 +174,7 @@ export function Donut({ parts, centerTop, centerBottom, label }: { parts: { key:
       <svg viewBox="0 0 170 170" width="170" height="170" role="img" aria-label={label}>
         <circle cx="85" cy="85" r={R} fill="none" stroke="#f1f2f6" strokeWidth="20" />
         {total > 0 && parts.filter((p) => p.value > 0).map((p) => {
-          const len = (p.value / total) * C, gap = Math.min(3, len / 3);
+          const len = (p.value / total) * C, gap = parts.filter((x) => x.value > 0).length > 1 ? Math.min(3, len / 3) : 0;
           const el = (
             <circle key={p.key} cx="85" cy="85" r={R} fill="none" stroke={p.color} strokeWidth={on === p.key ? 24 : 20} strokeDasharray={`${Math.max(0, len - gap)} ${C}`} strokeDashoffset={-acc} transform="rotate(-90 85 85)" strokeLinecap="butt" style={{ transition: 'stroke-width .15s' }} onMouseEnter={() => setOn(p.key)} onMouseLeave={() => setOn(null)} />
           );

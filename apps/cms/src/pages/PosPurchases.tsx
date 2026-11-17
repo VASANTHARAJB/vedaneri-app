@@ -7,7 +7,8 @@ import { Card, Field, Item, Modal, Preset, PosShell, RangeBar, dmy, posApi, posD
 type Purchase = { id: number; bill_no: string; supplier_id: number | null; supplier: string; supplier_bill: string; purchase_date: string; total: number; notes: string; status: 'ACTIVE' | 'CANCELLED'; cancel_reason: string; by: string; lines: number };
 type PurchaseDetail = Purchase & { items: { item_id: number; name: string; sku: string; unit: string; qty: number; cost: number; amount: number }[] };
 type Supplier = { id: number; name: string; active: boolean };
-type Line = { item_id: string; qty: string; cost: string };
+type Line = { cat: string; item_id: string; qty: string; cost: string };
+const NO_CAT = '__none'; // items that have no category
 
 export default function PosPurchases() {
   const { notice, flash, clear } = useFlash();
@@ -62,9 +63,22 @@ export default function PosPurchases() {
   };
 
   const stockable = useMemo(() => items.filter((i) => i.track_stock), [items]);
-  const newForm = () => { setErr(''); setForm({ supplier_id: '', supplier_bill: '', purchase_date: ymd(new Date()), notes: '', lines: [{ item_id: '', qty: '', cost: '' }], update_cost: true }); };
+  const newForm = () => { setErr(''); setForm({ supplier_id: '', supplier_bill: '', purchase_date: ymd(new Date()), notes: '', lines: [{ cat: '', item_id: '', qty: '', cost: '' }], update_cost: true }); };
   const setLine = (k: number, patch: Partial<Line>) => setForm((f) => (f ? { ...f, lines: f.lines.map((l, i) => (i === k ? { ...l, ...patch } : l)) } : f));
   const pickItem = (k: number, id: string) => { const it = items.find((i) => String(i.id) === id); setLine(k, { item_id: id, cost: it ? String(it.cost || '') : '' }); };
+  // The categories of the items that can be bought, and the items of one category
+  const categories = useMemo(() => Array.from(new Set(stockable.map((i) => i.category).filter(Boolean))).sort((a, b) => a.localeCompare(b)), [stockable]);
+  const hasUncategorised = useMemo(() => stockable.some((i) => !i.category), [stockable]);
+  const itemsOf = (cat: string) => (cat === '' ? stockable : cat === NO_CAT ? stockable.filter((i) => !i.category) : stockable.filter((i) => i.category === cat));
+  // Choosing another category clears the item when it does not belong to it
+  const pickCat = (k: number, cat: string) => setForm((f) => {
+    if (!f) return f;
+    return { ...f, lines: f.lines.map((l, i) => {
+      if (i !== k) return l;
+      const keep = l.item_id && itemsOf(cat).some((x) => String(x.id) === l.item_id);
+      return keep ? { ...l, cat } : { ...l, cat, item_id: '', cost: '' };
+    }) };
+  });
   const formTotal = form ? form.lines.reduce((a, l) => a + (Number(l.qty) || 0) * (Number(l.cost) || 0), 0) : 0;
   const save = async () => {
     if (!form) return;
@@ -144,16 +158,26 @@ export default function PosPurchases() {
             <Field label="Purchase date"><input className="pdx-inp" type="date" value={form.purchase_date} max={ymd(new Date())} onChange={(e) => setForm({ ...form, purchase_date: e.target.value })} /></Field>
           </div>
           <div style={{ marginTop: 14 }}>
-            <div className="ps-line" style={{ fontSize: 12, fontWeight: 700, color: '#6b7280' }}><span>Item</span><span>Quantity</span><span>Cost each</span><span /></div>
+            <div className="ps-line" style={{ fontSize: 12, fontWeight: 700, color: '#6b7280' }}><span>Category and item</span><span>Quantity</span><span>Cost each</span><span /></div>
             {form.lines.map((l, k) => (
               <div className="ps-line" key={k}>
-                <select className="pdx-inp" value={l.item_id} onChange={(e) => pickItem(k, e.target.value)} aria-label="Item"><option value="">Choose an item</option>{stockable.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}</select>
+                <div style={{ display: 'grid', gap: 6, minWidth: 0 }}>
+                  <select className="pdx-inp" value={l.cat} onChange={(e) => pickCat(k, e.target.value)} aria-label="Category">
+                    <option value="">All categories</option>
+                    {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+                    {hasUncategorised && <option value={NO_CAT}>No category</option>}
+                  </select>
+                  <select className="pdx-inp" value={l.item_id} onChange={(e) => pickItem(k, e.target.value)} aria-label="Item">
+                    <option value="">{itemsOf(l.cat).length ? 'Choose an item' : 'No items in this category'}</option>
+                    {itemsOf(l.cat).map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+                  </select>
+                </div>
                 <input className="pdx-inp" type="number" min="0" step="0.001" value={l.qty} onChange={(e) => setLine(k, { qty: e.target.value })} aria-label="Quantity" />
                 <input className="pdx-inp" type="number" min="0" step="0.01" value={l.cost} onChange={(e) => setLine(k, { cost: e.target.value })} aria-label="Cost each" />
                 <button type="button" className="ps-x" onClick={() => setForm({ ...form, lines: form.lines.length > 1 ? form.lines.filter((_, i) => i !== k) : form.lines })} aria-label="Remove line">×</button>
               </div>
             ))}
-            <button type="button" className="pdx-btn" onClick={() => setForm({ ...form, lines: [...form.lines, { item_id: '', qty: '', cost: '' }] })}>+ Add another item</button>
+            <button type="button" className="pdx-btn" onClick={() => setForm({ ...form, lines: [...form.lines, { cat: '', item_id: '', qty: '', cost: '' }] })}>+ Add another item</button>
           </div>
           <label style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 14, fontSize: 14 }}><input type="checkbox" checked={form.update_cost} onChange={(e) => setForm({ ...form, update_cost: e.target.checked })} /> Use these costs as the items' cost price from now on</label>
           <div style={{ marginTop: 10 }}><Field label="Notes"><input className="pdx-inp" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} autoComplete="off" /></Field></div>

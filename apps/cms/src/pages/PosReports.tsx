@@ -1,23 +1,37 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { useFlash } from './DiscoverKit';
+import { authHeader, failText, readJson, useFlash } from './DiscoverKit';
 import { inr } from './PaymentCharts';
-import { Bars, Card, MODE_LABEL, Preset, PosShell, RangeBar, posApi, posDownload, qtyText, rangeFor, shortDay } from './PosKit';
+import { Bars, Card, MODE_LABEL, POS_BASE, Preset, PosShell, RangeBar, loadHead, posApi, qtyText, rangeFor, shortDay } from './PosKit';
+import { useAuth } from '../lib/auth';
+import { buildReportXlsx } from './posReportXlsx';
+import type { Rep } from './posReportXlsx';
 
 // Sales, GST and profit for a period. Profit = sales - GST inside the sales - the cost of what was sold (the item's cost when it was sold).
-type Rep = {
-  summary: { bills: number; subtotal: number; discount: number; gst: number; total: number; cost: number; profit: number; purchases: number; purchaseBills: number };
-  byDay: { d: string; bills: number; total: number }[]; byMode: { mode: string; bills: number; total: number }[];
-  byItem: { name: string; unit: string; qty: number; amount: number; profit: number }[]; byCategory: { category: string; qty: number; amount: number }[];
-};
+
+// The name and address printed at the top of the downloaded report.
+// Write the address lines, phone number and GST / registration number here, one per line. If this list is empty,
+// the address line of "Bill heading" on the New Sale screen is used instead.
+const ORG_NAME = 'SRI DAKSHINAMURTI SEVA SAMITI';
+const ORG_ADDRESS: string[] = [];
+
+const ddmmyyyy = (ymd: string) => (/^\d{4}-\d{2}-\d{2}$/.test(ymd) ? `${ymd.slice(8, 10)}${ymd.slice(5, 7)}${ymd.slice(0, 4)}` : '');
+
+async function posText(path: string): Promise<string> {
+  const res = await fetch(`${POS_BASE}${path}`, { headers: authHeader(), cache: 'no-store' });
+  if (!res.ok) throw new Error(failText(await readJson(res), 'Could not make the report.'));
+  return res.text();
+}
 
 export default function PosReports() {
   const { notice, flash, clear } = useFlash();
+  const auth = useAuth() as any;
   const first = rangeFor('month');
   const [from, setFrom] = useState(first.from);
   const [to, setTo] = useState(first.to);
   const [preset, setPreset] = useState<Preset>('month');
   const [r, setR] = useState<Rep | null>(null);
   const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
 
   const params = useCallback(() => { const p = new URLSearchParams(); if (from) p.set('from', from); if (to) p.set('to', to); return p; }, [from, to]);
   const load = useCallback(async () => {
@@ -28,16 +42,38 @@ export default function PosReports() {
   }, [params]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { load(); }, [load]);
 
+  // One file with everything: Summary, Sales, Purchases and Stock sheets
+  const download = async () => {
+    setBusy(true);
+    try {
+      const [rep, salesCsv, purchasesCsv, stockCsv] = await Promise.all([
+        posApi<Rep>(`/reports?${params()}`),
+        posText(`/export?type=sales&${params()}`),
+        posText(`/export?type=purchases&${params()}`),
+        posText('/export?type=stock'),
+      ]);
+      const head = loadHead();
+      const bytes = await buildReportXlsx({
+        org: { name: ORG_NAME, address: ORG_ADDRESS.length ? ORG_ADDRESS : [head.line].filter(Boolean) },
+        from, to, generatedAt: new Date(), generatedBy: String(auth?.user?.email || auth?.user?.full_name || ''),
+        rep, salesCsv, purchasesCsv, stockCsv, modeLabel: MODE_LABEL,
+      });
+      const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const span = from || to ? `-${ddmmyyyy(from) || 'start'}-to-${ddmmyyyy(to) || 'today'}` : '-all';
+      a.href = url; a.download = `SDSS-sale-report${span}.xlsx`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+    } catch (e: any) { flash('err', e?.message || 'Could not make the report.'); }
+    finally { setBusy(false); }
+  };
+
   const s = r?.summary;
   const maxCat = Math.max(1, ...(r?.byCategory.map((c) => c.amount) || [1]));
-  const dl = (type: string, file: string) => posDownload(`/export?type=${type}&${params()}`, file).catch((e) => flash('err', e.message));
   return (
     <PosShell title="POS Reports" sub="Sales, GST and profit for the dates you choose. Cancelled bills are left out." notice={notice} clear={clear}
-      actions={<>
-        <button type="button" className="pdx-btn" onClick={() => dl('sales', 'pos-sales.csv')}>Sales CSV</button>
-        <button type="button" className="pdx-btn" onClick={() => dl('purchases', 'pos-purchases.csv')}>Purchases CSV</button>
-        <button type="button" className="pdx-btn" onClick={() => posDownload('/export?type=stock', 'pos-stock.csv').catch((e) => flash('err', e.message))}>Stock CSV</button>
-      </>}>
+      actions={<button type="button" className="pdx-btn ps-btn-main" onClick={download} disabled={busy}>{busy ? 'Preparing the report...' : 'Download report (Excel)'}</button>}>
       <div className="pdx-card" style={{ marginBottom: 14 }}><RangeBar from={from} to={to} preset={preset} onChange={(f, t, p) => { setFrom(f); setTo(t); setPreset(p); }} /></div>
       {!r || !s ? <p className="ps-empty">{loading ? 'Loading...' : 'No data.'}</p> : (
         <>

@@ -9,6 +9,23 @@ const CARD =
 const FOCUS =
   'focus:outline-none focus-visible:ring-2 focus-visible:ring-[#f59e0b]/60 focus-visible:ring-offset-1';
 
+// The CMS page addresses that exist (see App.tsx). A page key from the API is matched to one of these.
+const CMS_SLUGS = new Set([
+  'sevas', 'camps', 'magazine', 'donations', 'panchangam', 'panchangam-calendar',
+  'page-home', 'page-contact', 'page-accommodation',
+  'about-swami', 'about-ashramam', 'about-adhishtanam', 'about-vidyapitham',
+  'discover-audio', 'discover-video', 'discover-album',
+]);
+
+function resolveSlug(key: string): string {
+  const k = String(key || '').trim().toLowerCase();
+  if (CMS_SLUGS.has(k)) return k;
+  if (CMS_SLUGS.has(`page-${k}`)) return `page-${k}`;
+  if (CMS_SLUGS.has(`about-${k}`)) return `about-${k}`;
+  if (CMS_SLUGS.has(`discover-${k}`)) return `discover-${k}`;
+  return k;
+}
+
 interface ContentStatsProps {
   onNavigateTab?: (tab: string) => void;
 }
@@ -20,6 +37,7 @@ export default function ContentStats({ onNavigateTab }: ContentStatsProps) {
 
   const [loading, setLoading] = useState(true);
   const [isLive, setIsLive] = useState(false);
+  const [failed, setFailed] = useState(false);
   const [overview, setOverview] = useState({
     totalSevas: 0,
     activeSevas: 0,
@@ -34,7 +52,7 @@ export default function ContentStats({ onNavigateTab }: ContentStatsProps) {
     if (onNavigateTab) {
       onNavigateTab(target);
     } else {
-      navigate(`/${target}`);
+      navigate(`/${resolveSlug(target)}`);
     }
   };
 
@@ -61,14 +79,22 @@ export default function ContentStats({ onNavigateTab }: ContentStatsProps) {
 
         if (res.ok) {
           const json = await res.json();
-          if (json.overview) setOverview(json.overview);
-          if (json.corePages) setCorePages(json.corePages);
+          if (json.overview) {
+            setOverview({
+              ...json.overview,
+              media: json.overview.media || { audio: 0, video: 0, gallery: 0, total: 0 },
+            });
+          }
+          setCorePages(Array.isArray(json.corePages) ? json.corePages : []);
           setIsLive(true);
+          setFailed(false);
         } else {
           setIsLive(false);
+          setFailed(true);
         }
       } catch (err) {
         setIsLive(false);
+        setFailed(true);
       } finally {
         setLoading(false);
       }
@@ -102,11 +128,11 @@ export default function ContentStats({ onNavigateTab }: ContentStatsProps) {
                   isLive ? 'bg-[#10b981] animate-pulse' : 'bg-[#f59e0b]'
                 }`}
               />
-              {isLive ? 'MariaDB Live' : loading ? 'Syncing...' : 'Database Offline'}
+              {isLive ? 'Live' : loading ? 'Syncing...' : 'Offline'}
             </span>
           </div>
           <p className="text-xs text-[#8a5a44] mt-1 font-medium">
-            Centralized telemetry for public website pages, pooja catalogs, discourse audio/video assets, and publications.
+            Overview of the public website pages, pooja catalog, audio and video library, and publications.
           </p>
         </div>
 
@@ -121,7 +147,7 @@ export default function ContentStats({ onNavigateTab }: ContentStatsProps) {
           </button>
           <button
             type="button"
-            onClick={() => handleNav('discover')}
+            onClick={() => handleNav('discover-audio')}
             className={`px-3.5 py-2 rounded-xl border border-[#f0e2c8] bg-white hover:bg-[#fff8ec] text-[#5b2a1a] text-xs font-semibold shadow-sm transition-all flex items-center gap-1.5 cursor-pointer ${FOCUS}`}
           >
             <span>Media Library</span>
@@ -210,7 +236,7 @@ export default function ContentStats({ onNavigateTab }: ContentStatsProps) {
             <span className="text-[#b59a86]">Pravachans & Videos</span>
             <button
               type="button"
-              onClick={() => handleNav('discover')}
+              onClick={() => handleNav('discover-audio')}
               className="font-bold text-[#0f766e] hover:underline cursor-pointer"
             >
               Library →
@@ -256,7 +282,7 @@ export default function ContentStats({ onNavigateTab }: ContentStatsProps) {
                 Public Website Pages Status
               </h2>
               <p className="text-xs text-[#8a5a44] mt-0.5">
-                Next.js routing endpoints, publication state, and SEO score
+                Page routes, publication status, and SEO score
               </p>
             </div>
             <span className="text-xs font-semibold text-[#8a5a44]">
@@ -272,15 +298,14 @@ export default function ContentStats({ onNavigateTab }: ContentStatsProps) {
                   <th className="py-3 px-4">Route Path</th>
                   <th className="py-3 px-4">Status</th>
                   <th className="py-3 px-4">SEO Health</th>
-                  <th className="py-3 px-4">Database State</th>
-                  <th className="py-3 px-4 text-right">Actions</th>
+                  <th className="py-3 px-4">Last Updated</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#f6ecd9] font-medium text-[#5b2a1a]">
                 {corePages.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="py-8 text-center text-slate-400">
-                      Loading page health matrix...
+                    <td colSpan={5} className="py-8 text-center text-slate-400">
+                      {loading ? 'Loading...' : failed ? 'Could not load the page status.' : 'No pages found.'}
                     </td>
                   </tr>
                 ) : (
@@ -306,15 +331,6 @@ export default function ContentStats({ onNavigateTab }: ContentStatsProps) {
                       </td>
                       <td className="py-3.5 px-4 font-semibold text-[#3b0d0d]">{page.seoScore}</td>
                       <td className="py-3.5 px-4 text-[#8a5a44]">{page.lastUpdated}</td>
-                      <td className="py-3.5 px-4 text-right">
-                        <button
-                          type="button"
-                          onClick={() => handleNav(page.key)}
-                          className="text-xs font-bold text-[#c2410c] hover:underline cursor-pointer"
-                        >
-                          Edit Layout
-                        </button>
-                      </td>
                     </tr>
                   ))
                 )}
@@ -330,67 +346,58 @@ export default function ContentStats({ onNavigateTab }: ContentStatsProps) {
             </h3>
             <p className="text-xs text-[#8a5a44] mt-0.5">Discourse audio, videos, and temple photos</p>
 
-            <div className="space-y-4 pt-4">
-              <div>
-                <div className="flex justify-between text-xs font-bold mb-1.5">
-                  <span className="text-[#5b2a1a] flex items-center gap-1.5">
-                    <span>🎙️</span>
-                    <span>Pravachan Audio Tracks</span>
-                  </span>
-                  <span className="text-[#3b0d0d] font-extrabold">
-                    {overview.media.audio} tracks
-                  </span>
-                </div>
-                <div className="h-2.5 w-full bg-[#f6ecd9] rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-[#ea580c] rounded-full transition-all duration-500"
-                    style={{ width: `${audioPct}%` }}
-                  />
-                </div>
+            {totalMedia === 0 ? (
+              <div className="mt-4 rounded-xl border border-dashed border-[#f0e2c8] bg-[#fffaf4] py-8 text-center text-xs font-medium text-[#b59a86]">
+                No media added yet.
               </div>
+            ) : (
+              <div className="space-y-4 pt-4">
+                <div>
+                  <div className="flex justify-between text-xs font-bold mb-1.5">
+                    <span className="text-[#5b2a1a] flex items-center gap-1.5">
+                      <span>🎙️</span>
+                      <span>Pravachan Audio Tracks</span>
+                    </span>
+                    <span className="text-[#3b0d0d] font-extrabold">{overview.media.audio} tracks</span>
+                  </div>
+                  <div className="h-2.5 w-full bg-[#f6ecd9] rounded-full overflow-hidden">
+                    <div className="h-full bg-[#ea580c] rounded-full transition-all duration-500" style={{ width: `${audioPct}%` }} />
+                  </div>
+                </div>
 
-              <div>
-                <div className="flex justify-between text-xs font-bold mb-1.5">
-                  <span className="text-[#5b2a1a] flex items-center gap-1.5">
-                    <span>🎥</span>
-                    <span>YouTube Discourses</span>
-                  </span>
-                  <span className="text-[#3b0d0d] font-extrabold">
-                    {overview.media.video} videos
-                  </span>
+                <div>
+                  <div className="flex justify-between text-xs font-bold mb-1.5">
+                    <span className="text-[#5b2a1a] flex items-center gap-1.5">
+                      <span>🎥</span>
+                      <span>YouTube Discourses</span>
+                    </span>
+                    <span className="text-[#3b0d0d] font-extrabold">{overview.media.video} videos</span>
+                  </div>
+                  <div className="h-2.5 w-full bg-[#f6ecd9] rounded-full overflow-hidden">
+                    <div className="h-full bg-[#7a1c1c] rounded-full transition-all duration-500" style={{ width: `${videoPct}%` }} />
+                  </div>
                 </div>
-                <div className="h-2.5 w-full bg-[#f6ecd9] rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-[#7a1c1c] rounded-full transition-all duration-500"
-                    style={{ width: `${videoPct}%` }}
-                  />
-                </div>
-              </div>
 
-              <div>
-                <div className="flex justify-between text-xs font-bold mb-1.5">
-                  <span className="text-[#5b2a1a] flex items-center gap-1.5">
-                    <span>🖼️</span>
-                    <span>Temple & Festival Gallery</span>
-                  </span>
-                  <span className="text-[#3b0d0d] font-extrabold">
-                    {overview.media.gallery} photos
-                  </span>
-                </div>
-                <div className="h-2.5 w-full bg-[#f6ecd9] rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-[#0f766e] rounded-full transition-all duration-500"
-                    style={{ width: `${galleryPct}%` }}
-                  />
+                <div>
+                  <div className="flex justify-between text-xs font-bold mb-1.5">
+                    <span className="text-[#5b2a1a] flex items-center gap-1.5">
+                      <span>🖼️</span>
+                      <span>Temple & Festival Gallery</span>
+                    </span>
+                    <span className="text-[#3b0d0d] font-extrabold">{overview.media.gallery} photos</span>
+                  </div>
+                  <div className="h-2.5 w-full bg-[#f6ecd9] rounded-full overflow-hidden">
+                    <div className="h-full bg-[#0f766e] rounded-full transition-all duration-500" style={{ width: `${galleryPct}%` }} />
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
 
           <div className="pt-3 border-t border-[#f6ecd9]">
             <button
               type="button"
-              onClick={() => handleNav('discover')}
+              onClick={() => handleNav('discover-audio')}
               className={`w-full py-2.5 rounded-xl border border-[#f0e2c8] bg-[#fff8ec] hover:bg-[#fdeccb] text-[#7a1c1c] text-xs font-bold transition-all text-center cursor-pointer ${FOCUS}`}
             >
               Upload New Audio / Video →

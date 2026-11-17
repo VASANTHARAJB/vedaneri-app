@@ -10,7 +10,7 @@ type Form = {
 };
 const blank: Form = { id: null, name: '', sku: '', barcode: '', category: '', unit: 'pcs', price: '', cost: '', gst_percent: '0', track_stock: true, reorder_level: '0', opening_stock: '', active: true, new_category: '' };
 const NEW_CAT = '__new__';
-const UNITS = ['pcs', 'kg', 'g', 'litre', 'ml', 'packet', 'box', 'set', 'metre'];
+const UNITS = ['pcs', 'kg', 'gm', 'litre', 'ml', 'packet', 'box', 'bundle', 'dozen', 'bottle', 'set', 'metre'];
 const GST_RATES = ['0', '5', '12', '18', '28'];
 type CatRow = { name: string; items: number };
 
@@ -134,12 +134,17 @@ export default function PosItems() {
               </select>
               {form.category === NEW_CAT && <input className="pdx-inp" style={{ marginTop: 6 }} value={form.new_category} onChange={(e) => set('new_category', e.target.value)} placeholder="Type the new category name" aria-label="New category name" autoFocus autoComplete="off" />}
             </Field>
-            <Field label="Unit"><input className="pdx-inp" list="pos-units" value={form.unit} onChange={(e) => set('unit', e.target.value)} autoComplete="off" /><datalist id="pos-units">{UNITS.map((u) => <option key={u} value={u} />)}</datalist></Field>
+            <Field label="Unit">
+              <select className="pdx-inp" value={form.unit} onChange={(e) => set('unit', e.target.value)}>
+                {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+                {form.unit && !UNITS.includes(form.unit) && <option value={form.unit}>{form.unit}</option>}
+              </select>
+            </Field>
             <Field label="Selling price (with GST) *"><input className="pdx-inp" type="number" min="0" step="0.01" value={form.price} onChange={(e) => set('price', e.target.value)} /></Field>
             <Field label="Cost price"><input className="pdx-inp" type="number" min="0" step="0.01" value={form.cost} onChange={(e) => set('cost', e.target.value)} /></Field>
             <Field label="GST % in the price"><select className="pdx-inp" value={GST_RATES.includes(form.gst_percent) ? form.gst_percent : ''} onChange={(e) => set('gst_percent', e.target.value)}>{GST_RATES.map((g) => <option key={g} value={g}>{g}%</option>)}{!GST_RATES.includes(form.gst_percent) && <option value="">{form.gst_percent}%</option>}</select></Field>
-            <Field label="Re-order level" hint="Warn when stock falls to this"><input className="pdx-inp" type="number" min="0" step="0.001" value={form.reorder_level} onChange={(e) => set('reorder_level', e.target.value)} disabled={!form.track_stock} /></Field>
             {!form.id && <Field label="Opening stock" hint="What is on the shelf today"><input className="pdx-inp" type="number" min="0" step="0.001" value={form.opening_stock} onChange={(e) => set('opening_stock', e.target.value)} disabled={!form.track_stock} /></Field>}
+            <Field label="Low stock alert" hint="You get an alert when the stock falls to this number"><input className="pdx-inp" type="number" min="0" step="0.001" value={form.reorder_level} onChange={(e) => set('reorder_level', e.target.value)} disabled={!form.track_stock} /></Field>
           </div>
           <label style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 14, fontSize: 14 }}><input type="checkbox" checked={form.track_stock} onChange={(e) => set('track_stock', e.target.checked)} /> Count the stock of this item (untick for services)</label>
           {form.id && <label style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8, fontSize: 14 }}><input type="checkbox" checked={form.active} onChange={(e) => set('active', e.target.checked)} /> For sale (untick to stop selling it; past bills are kept)</label>}

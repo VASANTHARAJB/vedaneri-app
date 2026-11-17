@@ -7,6 +7,8 @@ export interface User {
   email: string;
   full_name: string;
   role: 'superadmin' | 'admin' | 'website' | 'payments' | 'registration' | 'sales' | 'priest' | 'editor' | 'devotee';
+  // The pages ticked for this login on the Users page; null or missing = the pages of the role
+  page_access?: string[] | null;
 }
 
 export interface AuthCtx {
@@ -95,7 +97,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const d = await res.json();
         if (!alive || !d?.user) return;
         setUser((prev) => {
-          if (prev && prev.role === d.user.role && prev.full_name === d.user.full_name && prev.email === d.user.email) return prev;
+          if (prev && prev.role === d.user.role && prev.full_name === d.user.full_name && prev.email === d.user.email
+            && JSON.stringify(prev.page_access ?? null) === JSON.stringify(d.user.page_access ?? null)) return prev;
           localStorage.setItem('cms_user', JSON.stringify(d.user));
           return d.user as User;
         });

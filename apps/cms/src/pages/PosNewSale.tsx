@@ -6,7 +6,15 @@ import { BillHead, Field, Item, MODE_LABEL, PosShell, SaleDetail, loadHead, posA
 // The counter screen. Type or scan to find an item (Enter adds it), change the quantity, take the payment, and print the bill.
 type Line = { item: Item; qty: string; price: string };
 type Done = { id: number; bill_no: string; total: number };
-const MODES = Object.keys(MODE_LABEL);
+
+// Cash, UPI and Card only ("Other" is no longer offered)
+const MODES = Object.keys(MODE_LABEL).filter((m) => m !== 'other');
+// UPI and Card fill the payment reference with this name; staff can type over it
+const DEFAULT_REF: Record<string, string> = { upi: 'UPI', card: 'Card' };
+
+// A 10 digit Indian mobile number (a leading +91 or 91 is accepted)
+const cleanPhone = (v: string) => v.replace(/\D/g, '').replace(/^91(?=\d{10}$)/, '');
+const phoneOk = (v: string) => /^[6-9]\d{9}$/.test(cleanPhone(v));
 
 export default function PosNewSale() {
   const { notice, flash, clear } = useFlash();
@@ -67,17 +75,22 @@ export default function PosNewSale() {
   const total = Math.round((subtotal - disc) * 100) / 100;
   const change = mode === 'cash' && tendered !== '' ? Math.round((Number(tendered) - total) * 100) / 100 : null;
 
+  // Choosing UPI or Card fills in its default name; Cash clears it
+  const chooseMode = (m: string) => { setMode(m); setRef(DEFAULT_REF[m] || ''); };
+
   const reset = () => { setLines([]); setDiscount(''); setCustomer(''); setPhone(''); setMode('cash'); setRef(''); setTendered(''); setErr(''); };
   const save = async (print: boolean) => {
     setErr('');
     if (!lines.length) { setErr('Add at least one item.'); return; }
     if (lines.some((l) => !(Number(l.qty) > 0))) { setErr('Every quantity must be more than zero.'); return; }
     if (Number(discount) > subtotal) { setErr('The discount cannot be more than the bill.'); return; }
+    if (customer.trim().length < 2) { setErr('Please enter the customer name.'); return; }
+    if (!phoneOk(phone)) { setErr('Please enter a valid 10 digit mobile number.'); return; }
     setBusy(true);
     try {
       const r = await posApi<Done>('/sales', { method: 'POST', body: {
         lines: lines.map((l) => ({ item_id: l.item.id, qty: Number(l.qty), price: l.price === String(l.item.price) ? undefined : Number(l.price) })),
-        discount: disc, customer_name: customer, phone, pay_mode: mode, pay_ref: ref,
+        discount: disc, customer_name: customer.trim(), phone: cleanPhone(phone), pay_mode: mode, pay_ref: ref,
       } });
       setDone(r); reset(); load();
       if (print) {
@@ -146,7 +159,7 @@ export default function PosNewSale() {
           <div className="ps-total big"><span>Total</span><span>{inr(total)}</span></div>
 
           <div className="ps-seg" style={{ marginTop: 12 }} role="group" aria-label="Payment mode">
-            {MODES.map((m) => <button key={m} type="button" className={mode === m ? 'on' : ''} onClick={() => setMode(m)}>{MODE_LABEL[m]}</button>)}
+            {MODES.map((m) => <button key={m} type="button" className={mode === m ? 'on' : ''} onClick={() => chooseMode(m)}>{MODE_LABEL[m]}</button>)}
           </div>
           {mode === 'cash' && (
             <div className="ps-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
@@ -154,10 +167,10 @@ export default function PosNewSale() {
               <Field label="Change to return"><div className="pdx-inp" style={{ background: '#faf5f0', fontWeight: 800, color: change !== null && change < 0 ? '#b91c1c' : '#15803d' }}>{change === null ? '-' : change < 0 ? `short ${inr(-change)}` : inr(change)}</div></Field>
             </div>
           )}
-          {(mode === 'upi' || mode === 'card' || mode === 'other') && <div style={{ marginTop: 10 }}><Field label="Reference (optional)"><input className="pdx-inp" value={ref} onChange={(e) => setRef(e.target.value)} placeholder="UPI / card reference" autoComplete="off" /></Field></div>}
+          {(mode === 'upi' || mode === 'card') && <div style={{ marginTop: 10 }}><Field label="Reference (optional)"><input className="pdx-inp" value={ref} onChange={(e) => setRef(e.target.value)} placeholder="UPI / card reference" autoComplete="off" /></Field></div>}
           <div className="ps-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
-            <Field label="Customer (optional)"><input className="pdx-inp" value={customer} onChange={(e) => setCustomer(e.target.value)} autoComplete="off" /></Field>
-            <Field label="Mobile (optional)"><input className="pdx-inp" value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" autoComplete="off" /></Field>
+            <Field label="Customer name *"><input className="pdx-inp" value={customer} onChange={(e) => setCustomer(e.target.value)} required aria-required="true" autoComplete="off" /></Field>
+            <Field label="Mobile *"><input className="pdx-inp" value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" maxLength={15} required aria-required="true" placeholder="10 digit number" autoComplete="off" /></Field>
           </div>
           <div className="ps-seg" style={{ marginTop: 12 }} role="group" aria-label="Bill size">
             <button type="button" className={size === '80' ? 'on' : ''} onClick={() => setSize('80')}>80 mm receipt</button>

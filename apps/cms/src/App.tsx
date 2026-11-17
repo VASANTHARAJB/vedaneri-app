@@ -8,6 +8,7 @@ import SevasManagement from './pages/SevasManagement';
 import SankalpamRoster from './pages/SankalpamRoster';
 import Login from './pages/Login';
 import PanchangamManager from './pages/PanchangamManager';
+import PanchangamCalendar from './pages/PanchangamCalendar';
 import DonationsManagement from './pages/DonationsManagement';
 import CampsManagement from './pages/CampsManagement';
 import MagazineManagement from './pages/MagazineManagement';
@@ -64,6 +65,7 @@ export default function App() {
             <Route path="dashboard" element={<DashboardOverview />} />
             <Route path="content-stats" element={<ContentStats />} />
             <Route path="sevas" element={<SevasManagement />} />
+            <Route path="panchangam-calendar" element={<PanchangamCalendar />} />
             <Route path="panchangam" element={<PanchangamManager />} />
             <Route path="donations" element={<DonationsManagement />} />
             <Route path="camps" element={<CampsManagement />} />
@@ -101,7 +103,6 @@ export default function App() {
             <Route path="users" element={<UsersManagement />} />
             <Route path="settings" element={<Soon name="Settings" />} />
             <Route path="*" element={<Soon name="Page Not Found" />} />
-            
           </Route>
 
           <Route path="*" element={<Navigate to="/dashboard" replace />} />

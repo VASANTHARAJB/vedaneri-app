@@ -5,6 +5,7 @@ import { pool } from '../db';
 import { config } from '../config';
 import { authenticate } from '../middleware/auth';
 import { AuthenticatedRequest } from '../types';
+import { pageCols, parsePages } from '../middleware/roleAccess';
 
 const router = Router();
 
@@ -17,7 +18,7 @@ router.post('/login', async (req: Request, res: Response) => {
     }
 
     const [rows]: any = await pool.query(
-      'SELECT id, email, full_name, role, password_hash, is_active FROM users WHERE email = ? LIMIT 1',
+      `SELECT id, email, full_name, role, password_hash, is_active${await pageCols()} FROM users WHERE email = ? LIMIT 1`,
       [email.trim().toLowerCase()]
     );
 
@@ -48,7 +49,7 @@ router.post('/login', async (req: Request, res: Response) => {
 
     return res.json({
       token,
-      user: tokenPayload,
+      user: { ...tokenPayload, page_access: parsePages(user.page_access) },
     });
   } catch (error: any) {
     console.error('Login error:', error);
@@ -64,12 +65,12 @@ router.get('/me', (req: Request, res: Response, next) => {
   try {
     const id = String((authReq.user as any)?.id || '');
     if (!id) return res.status(401).json({ message: 'Please sign in again.' });
-    const [rows]: any = await pool.query('SELECT id, email, full_name, role, is_active FROM users WHERE id = ? LIMIT 1', [id]);
+    const [rows]: any = await pool.query(`SELECT id, email, full_name, role, is_active${await pageCols()} FROM users WHERE id = ? LIMIT 1`, [id]);
     const u = rows?.[0];
     if (!u) return res.status(401).json({ message: 'Please sign in again.' });
     if (Number(u.is_active) === 0) return res.status(403).json({ message: 'Account is deactivated. Contact administrator.' });
     res.setHeader('Cache-Control', 'no-store');
-    return res.json({ user: { id: u.id, email: u.email, full_name: u.full_name, role: u.role } });
+    return res.json({ user: { id: u.id, email: u.email, full_name: u.full_name, role: u.role, page_access: parsePages(u.page_access) } });
   } catch (e: any) {
     console.error('Me error:', e?.message || e);
     return res.status(500).json({ message: 'Could not check your login.' });

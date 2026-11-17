@@ -129,7 +129,7 @@ export default function SevaPayments() {
     const mine = ++seq.current;
     setLoading(true); setErr('');
     try {
-      const sp = qs(false); // the charts follow the dates and the filters, not the search words
+      const sp = qs(true); // the figures and charts follow the dates, the filters and the search words
       const lp = qs(true); lp.set('page', String(page)); lp.set('limit', String(LIMIT)); lp.set('sort', sort);
       const [a, b] = await Promise.all([
         fetch(`${SEVA}/summary?${sp}`, { headers: authHeader(), cache: 'no-store' }),

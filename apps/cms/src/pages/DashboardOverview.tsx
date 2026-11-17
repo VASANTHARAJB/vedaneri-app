@@ -40,7 +40,7 @@ function LivePill({ isLive }: { isLive: boolean }) {
       }`}
     >
       <span className={`h-1.5 w-1.5 rounded-full ${isLive ? 'bg-[#10b981] animate-pulse' : 'bg-[#f59e0b]'}`} />
-      {isLive ? 'MariaDB Live' : 'Connecting Database...'}
+      {isLive ? 'Live' : 'Connecting...'}
     </span>
   );
 }
@@ -48,13 +48,13 @@ function LivePill({ isLive }: { isLive: boolean }) {
 interface MetricCardProps {
   title: string;
   value: string;
-  change: string;
-  trend: 'up' | 'down';
+  change?: string;
+  trend?: 'up' | 'down';
   comparisonText: string;
   icon: React.ReactNode;
   iconClass: string;
-  sparklineColor: string;
-  sparklinePath: string;
+  sparklineColor?: string;
+  sparklinePath?: string;
 }
 
 function MetricCard({
@@ -77,20 +77,24 @@ function MetricCard({
 
       <div className="mt-3 flex items-baseline justify-between gap-2">
         <span className="text-2xl font-extrabold tracking-tight text-[#3b0d0d]">{value}</span>
-        <span
-          className={`flex items-center gap-0.5 rounded-md px-2 py-0.5 text-[11px] font-bold ${
-            trend === 'up' ? 'bg-[#ecfdf5] text-[#047857]' : 'bg-[#fff1f2] text-[#be123c]'
-          }`}
-        >
-          {trend === 'up' ? '↗' : '↘'} {change}
-        </span>
+        {change && (
+          <span
+            className={`flex items-center gap-0.5 rounded-md px-2 py-0.5 text-[11px] font-bold ${
+              trend === 'down' ? 'bg-[#fff1f2] text-[#be123c]' : 'bg-[#ecfdf5] text-[#047857]'
+            }`}
+          >
+            {trend === 'down' ? '↘' : '↗'} {change}
+          </span>
+        )}
       </div>
 
       <div className="mt-3 flex items-center justify-between border-t border-[#f6ecd9] pt-3">
         <span className="text-[11px] font-medium text-[#b59a86]">{comparisonText}</span>
-        <svg className="h-6 w-24 overflow-visible" viewBox="0 0 100 24" fill="none" aria-hidden="true">
-          <path d={sparklinePath} stroke={sparklineColor} strokeWidth="2.2" strokeLinecap="round" />
-        </svg>
+        {sparklinePath && (
+          <svg className="h-6 w-24 overflow-visible" viewBox="0 0 100 24" fill="none" aria-hidden="true">
+            <path d={sparklinePath} stroke={sparklineColor} strokeWidth="2.2" strokeLinecap="round" />
+          </svg>
+        )}
       </div>
     </div>
   );
@@ -121,12 +125,6 @@ function smoothPath(values: number[]): string {
   return d;
 }
 
-const DISPATCH_STYLES: Record<string, string> = {
-  Printed: 'border-[#a7f3d0] bg-[#ecfdf5] text-[#047857]',
-  'Pending Print': 'border-[#fde68a] bg-[#fffbeb] text-[#b45309]',
-  'Email Receipt': 'border-[#e7d9c4] bg-[#f5efe6] text-[#6b4a3a]',
-};
-
 export default function DashboardOverview() {
   const navigate = useNavigate();
   const auth = useAuth() as any;
@@ -141,7 +139,7 @@ export default function DashboardOverview() {
     totalRevenue: '₹ 0',
     todaysSankalpam: '0',
     annadhanamTotal: '₹ 0',
-    pendingDispatch: '0',
+    postSubscribers: '0',
   });
 
   const [chartData, setChartData] = useState<{
@@ -149,17 +147,12 @@ export default function DashboardOverview() {
     revenue: number[];
     bookings: number[];
   }>({
-    labels: ['Jan', 'Mar', 'May', 'Jul', 'Sep', 'Oct'],
-    revenue: [22, 34, 45, 52, 68, 80],
-    bookings: [15, 26, 35, 44, 55, 66],
+    labels: [],
+    revenue: [],
+    bookings: [],
   });
 
-  const [sevaMix, setSevaMix] = useState<any[]>([
-    { label: 'Ekadasa Rudrabhishekam', pct: 42, amount: '₹62.3k', color: '#7a1c1c' },
-    { label: 'Annadhanam Trust (80G)', pct: 34, amount: '₹50.5k', color: '#ea580c' },
-    { label: 'Daily Nitya Archana', pct: 16, amount: '₹23.7k', color: '#f59e0b' },
-    { label: 'Monthly Magazine & Camp', pct: 8, amount: '₹11.9k', color: '#0f766e' },
-  ]);
+  const [sevaMix, setSevaMix] = useState<any[]>([]);
 
   const [recentTransactions, setRecentTransactions] = useState<any[]>([]);
   const [staffMembers, setStaffMembers] = useState<any[]>([]);
@@ -186,7 +179,7 @@ export default function DashboardOverview() {
           const data = await res.json();
           if (data.metrics) setMetrics(data.metrics);
           if (data.chartData) setChartData(data.chartData);
-          if (data.sevaMix && data.sevaMix.length > 0) setSevaMix(data.sevaMix);
+          setSevaMix(Array.isArray(data.sevaMix) ? data.sevaMix : []);
           setRecentTransactions(data.recentTransactions || []);
           setStaffMembers(data.staffMembers || []);
           setIsLive(true);
@@ -200,6 +193,11 @@ export default function DashboardOverview() {
 
     fetchDashboardStats();
   }, [chartTimeline, authToken]);
+
+  // Charts are drawn only when there is something to draw
+  const hasChartData =
+    (chartData.revenue || []).some((v) => v > 0) || (chartData.bookings || []).some((v) => v > 0);
+  const hasMix = sevaMix.some((r) => Number(r.pct) > 0);
 
   const revenuePath = useMemo(() => smoothPath(chartData.revenue), [chartData.revenue]);
   const bookingsPath = useMemo(() => smoothPath(chartData.bookings), [chartData.bookings]);
@@ -234,7 +232,7 @@ export default function DashboardOverview() {
               Namaste, {firstName}
             </h1>
             <p className="mt-2 max-w-xl text-sm text-[#fde7b0]/80">
-              Live MariaDB metrics for sevas, priest rosters, postal dispatch, and staff accounts.
+              Live metrics for sevas, priest rosters, postal dispatch, and staff accounts.
             </p>
             <p className="mt-3 text-xs font-semibold text-[#fde7b0]/60">{todayLabel}</p>
           </div>
@@ -267,14 +265,7 @@ export default function DashboardOverview() {
           <LivePill isLive={isLive} />
         </div>
 
-        <button
-          type="button"
-          onClick={() => window.print()}
-          className={`flex items-center gap-1.5 rounded-xl border border-[#f0e2c8] bg-white px-3.5 py-2 text-xs font-semibold text-[#5b2a1a] shadow-sm transition-colors hover:bg-[#fff8ec] cursor-pointer ${FOCUS}`}
-        >
-          <Icon name="printer" />
-          Export Summary
-        </button>
+        
       </div>
 
       {/* 3. Four Metric Cards */}
@@ -282,46 +273,30 @@ export default function DashboardOverview() {
         <MetricCard
           title="Total Seva Revenue"
           value={metrics.totalRevenue}
-          change="+14.2%"
-          trend="up"
-          comparisonText="vs last month"
+          comparisonText="All paid seva bookings"
           icon={<Icon name="rupee" className="h-[18px] w-[18px]" />}
           iconClass="bg-[#fff3df] text-[#c2410c]"
-          sparklineColor="#ea580c"
-          sparklinePath="M0 20 Q 25 18, 50 11 T 100 4"
         />
         <MetricCard
           title="Today's Sankalpam"
           value={`${metrics.todaysSankalpam} Devotees`}
-          change="+8.2%"
-          trend="up"
           comparisonText="Archana list ready"
           icon={<Icon name="users" className="h-[18px] w-[18px]" />}
           iconClass="bg-[#fdebec] text-[#7a1c1c]"
-          sparklineColor="#7a1c1c"
-          sparklinePath="M0 22 Q 30 18, 60 10 T 100 3"
         />
         <MetricCard
           title="Annadhanam (80G)"
           value={metrics.annadhanamTotal}
-          change="+4.5%"
-          trend="up"
           comparisonText="Tax deductible ledger"
           icon={<Icon name="heart" className="h-[18px] w-[18px]" />}
           iconClass="bg-[#e6f6f3] text-[#0f766e]"
-          sparklineColor="#0f766e"
-          sparklinePath="M0 19 Q 40 18, 70 8 T 100 5"
         />
         <MetricCard
-          title="Prasadam Dispatch"
-          value={`${metrics.pendingDispatch} Pending`}
-          change="-1.8%"
-          trend="down"
-          comparisonText="Labels queued for print"
+          title="Magazine by Post"
+          value={`${metrics.postSubscribers} Active`}
+          comparisonText="Subscribers to post copies to"
           icon={<Icon name="printer" className="h-[18px] w-[18px]" />}
           iconClass="bg-[#fef3c7] text-[#b45309]"
-          sparklineColor="#f59e0b"
-          sparklinePath="M0 15 Q 35 12, 65 19 T 100 14"
         />
       </div>
 
@@ -361,6 +336,11 @@ export default function DashboardOverview() {
             </div>
           </div>
 
+          {!hasChartData ? (
+            <div className="flex h-64 items-center justify-center rounded-xl border border-dashed border-[#f0e2c8] bg-[#fffaf4] text-xs font-medium text-[#b59a86]">
+              No data yet for this period.
+            </div>
+          ) : (
           <div>
             <div className="relative h-64 w-full">
               <svg
@@ -419,7 +399,7 @@ export default function DashboardOverview() {
 
             <div className="flex flex-wrap items-center justify-between gap-3 pt-3">
               <p className="text-[11px] text-[#b59a86]">
-                Aggregated telemetry from remote MariaDB host.
+                Live figures from the ashram records.
               </p>
               <div className="flex items-center gap-5 text-xs font-semibold text-[#5b2a1a]">
                 <span className="flex items-center gap-1.5">
@@ -433,6 +413,7 @@ export default function DashboardOverview() {
               </div>
             </div>
           </div>
+          )}
         </section>
 
         <section className={`${CARD} flex flex-col justify-between space-y-4 p-6`}>
@@ -440,8 +421,13 @@ export default function DashboardOverview() {
             <h3 className="text-sm font-extrabold tracking-tight text-[#3b0d0d]">
               Pooja & Seva Distribution
             </h3>
-            <p className="mt-0.5 text-xs text-[#8a5a44]">Top contribution channels this month</p>
+            <p className="mt-0.5 text-xs text-[#8a5a44]">Top contribution channels in this range</p>
 
+            {!hasMix ? (
+              <div className="mt-5 rounded-xl border border-dashed border-[#f0e2c8] bg-[#fffaf4] py-10 text-center text-xs font-medium text-[#b59a86]">
+                No data yet.
+              </div>
+            ) : (
             <div className="space-y-4 pt-5">
               {sevaMix.map((row) => (
                 <div key={row.label}>
@@ -460,6 +446,7 @@ export default function DashboardOverview() {
                 </div>
               ))}
             </div>
+            )}
           </div>
 
           <button
@@ -480,7 +467,7 @@ export default function DashboardOverview() {
               <h3 className="text-sm font-extrabold tracking-tight text-[#3b0d0d]">
                 Recent Devotee Seva Transactions
               </h3>
-              <p className="mt-0.5 text-xs text-[#8a5a44]">Real-time records from database</p>
+              <p className="mt-0.5 text-xs text-[#8a5a44]">Latest seva bookings</p>
             </div>
             <button
               type="button"
@@ -496,10 +483,10 @@ export default function DashboardOverview() {
               <thead>
                 <tr className="border-b border-[#f6ecd9] bg-[#fff8ec] text-[10.5px] font-bold uppercase tracking-wider text-[#8a5a44]">
                   <th className="px-4 py-3">Receipt ID</th>
-                  <th className="px-4 py-3">Devotee & Gotram</th>
+                  <th className="px-4 py-3">Devotee</th>
                   <th className="px-4 py-3">Seva / Pooja</th>
                   <th className="px-4 py-3">Amount</th>
-                  <th className="px-4 py-3">Dispatch</th>
+                  <th className="px-4 py-3">Date</th>
                   <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
@@ -507,7 +494,7 @@ export default function DashboardOverview() {
                 {recentTransactions.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="px-4 py-10 text-center text-slate-400">
-                      No recent transactions recorded in database yet.
+                      No recent transactions yet.
                     </td>
                   </tr>
                 ) : (
@@ -524,13 +511,7 @@ export default function DashboardOverview() {
                       </td>
                       <td className="px-4 py-3.5 font-extrabold text-[#3b0d0d]">{tx.amount}</td>
                       <td className="px-4 py-3.5">
-                        <span
-                          className={`rounded-md border px-2 py-0.5 text-[10px] font-bold ${
-                            DISPATCH_STYLES[tx.dispatch] ?? DISPATCH_STYLES['Pending Print']
-                          }`}
-                        >
-                          {tx.dispatch}
-                        </span>
+                        <span className="text-[11px] font-semibold text-[#8a5a44]">{tx.date}</span>
                       </td>
                       <td className="px-4 py-3.5 text-right">
                         <button
@@ -553,7 +534,7 @@ export default function DashboardOverview() {
           <div className="flex items-center justify-between gap-2 border-b border-[#f6ecd9] pb-3">
             <div>
               <h3 className="text-sm font-extrabold tracking-tight text-[#3b0d0d]">Staff & Priest Logins</h3>
-              <p className="mt-0.5 text-xs text-[#8a5a44]">Registered MariaDB users</p>
+              <p className="mt-0.5 text-xs text-[#8a5a44]">Registered staff accounts</p>
             </div>
 
             <div
@@ -576,7 +557,7 @@ export default function DashboardOverview() {
                   activeStaffFilter === 'online' ? 'bg-white text-[#047857] shadow-sm' : 'text-[#b59a86]'
                 }`}
               >
-                Live
+                Active
               </button>
             </div>
           </div>

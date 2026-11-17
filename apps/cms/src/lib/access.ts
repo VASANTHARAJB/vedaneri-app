@@ -44,19 +44,57 @@ const GROUPS: Record<string, string[]> = {
   sales: POS,
 };
 
+// Every page, grouped like the sidebar. The Users page is left out: only a super admin opens it.
+export const PAGE_GROUPS: { title: string; pages: { slug: string; label: string }[] }[] = [
+  { title: 'Overview', pages: [{ slug: 'dashboard', label: 'Dashboard' }] },
+  { title: 'Website', pages: [
+    { slug: 'content-stats', label: 'Content Stats' }, { slug: 'sevas', label: 'Sevas' }, { slug: 'panchangam-calendar', label: 'Tamil Calendar' },
+    { slug: 'panchangam', label: 'Panchangam Manager' }, { slug: 'donations', label: 'Donations' }, { slug: 'camps', label: 'Camps' },
+    { slug: 'magazine', label: 'Magazine' }, { slug: 'page-home', label: 'Home Page' },
+  ] },
+  { title: 'About', pages: [
+    { slug: 'about-swami', label: 'Sri Swami Omkarananda' }, { slug: 'about-ashramam', label: 'Ashramam' },
+    { slug: 'about-adhishtanam', label: 'Adhishtanam' }, { slug: 'about-vidyapitham', label: 'Vidyapitham' },
+  ] },
+  { title: 'Website pages', pages: [{ slug: 'page-accommodation', label: 'Accommodation' }, { slug: 'page-contact', label: 'Contact Page' }] },
+  { title: 'Discover', pages: [{ slug: 'discover-audio', label: 'Audio' }, { slug: 'discover-video', label: 'Video' }, { slug: 'discover-album', label: 'Album' }] },
+  { title: 'Payments', pages: [
+    { slug: 'payments-dashboard', label: 'Payments Dashboard' }, { slug: 'seva-payments', label: 'Seva Payments' },
+    { slug: 'payment-donations', label: 'Donation Payments' }, { slug: 'payment-magazine', label: 'Magazine Payments' },
+    { slug: 'devotees', label: 'Devotee Details' }, { slug: 'devotee-records', label: 'Devotee Records' },
+  ] },
+  { title: 'Registers', pages: [
+    { slug: 'seva-register', label: 'Seva Register' }, { slug: 'donation-register', label: 'Donation Register' },
+    { slug: 'magazine-register', label: 'Magazine Register' }, { slug: 'camp-register', label: 'Camp Register' }, { slug: 'printing-labels', label: 'Printing Labels' },
+  ] },
+  { title: 'Point of sale', pages: [
+    { slug: 'pos', label: 'POS Dashboard' }, { slug: 'pos-new-sale', label: 'New Sale' }, { slug: 'pos-sales', label: 'Sales' },
+    { slug: 'pos-items', label: 'Items' }, { slug: 'pos-stock', label: 'Stock' }, { slug: 'pos-purchases', label: 'Purchases (Stock In)' },
+    { slug: 'pos-suppliers', label: 'Suppliers' }, { slug: 'pos-adjustments', label: 'Stock Adjustments' }, { slug: 'pos-reports', label: 'POS Reports' },
+  ] },
+  { title: 'System', pages: [{ slug: 'settings', label: 'Settings' }] },
+];
+export const ALL_PAGES: string[] = PAGE_GROUPS.flatMap((g) => g.pages.map((p) => p.slug));
+
 export const isAdminRole = (role?: string) => role === 'superadmin' || role === 'admin';
 
-// slug is the first part of the page address, for example "sevas" or "pos-sales"
-export function canOpen(role: string | undefined, slug: string): boolean {
+// The pages a role opens when the login has no list of its own
+export const roleDefaultPages = (role?: string): string[] => (isAdminRole(role) ? ALL_PAGES : (GROUPS[role || ''] || []));
+
+// slug is the first part of the page address, for example "sevas" or "pos-sales".
+// pages is the login's own ticked list (page_access); when it is empty or missing, the role decides.
+export function canOpen(role: string | undefined, slug: string, pages?: string[] | null): boolean {
   if (!role) return false;
   if (slug === 'users') return role === 'superadmin';
   if (isAdminRole(role)) return true;
+  if (pages && pages.length) return pages.includes(slug);
   return (GROUPS[role] || []).includes(slug);
 }
 
 // The page a login lands on after signing in
-export function homeSlug(role?: string): string {
+export function homeSlug(role?: string, pages?: string[] | null): string {
   if (isAdminRole(role)) return 'dashboard';
+  if (pages && pages.length) return ALL_PAGES.find((s) => pages.includes(s)) || 'dashboard';
   switch (role) {
     case 'payments': return 'payments-dashboard';
     case 'registration': return 'seva-register';
