@@ -33,15 +33,16 @@ import discoverRouter from './routes/discover';
 import aboutPagesRouter from './routes/aboutPages';
 import magazineIssuesRouter from './routes/magazineIssues';
 import contactRouter from './routes/contact';
-import accommodationRouter from './routes/accommodation'
- import homeRouter from './routes/home';
-    import paymentsRouter from './routes/payments';
+import accommodationRouter from './routes/accommodation';
+import homeRouter from './routes/home';
+import paymentsRouter from './routes/payments';
 import devoteeAdminRouter from './routes/devoteeAdmin';
+import donation80gRouter from './routes/donation80g';
 import registersRouter from './routes/registers';
 import posRoutes from './routes/pos';
 import { roleAccess } from './middleware/roleAccess';
-import usersRouter from './routes/users'; 
-   
+import usersRouter from './routes/users';
+
 const app = express();
 const IS_PROD = process.env.NODE_ENV === 'production';
 
@@ -129,6 +130,10 @@ if (!IS_PROD) {
   });
 }
 
+// Who may call which admin API (by role, or by the pages ticked on the Users page).
+// This MUST come before the routers below, otherwise the role split is not enforced on the server.
+app.use('/api/v1', roleAccess);
+
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/dashboard', dashboardRouter);
 app.use('/api/v1/content-stats', contentStatsRouter);
@@ -151,9 +156,11 @@ app.use('/api/v1/pages', aboutPagesRouter);
 app.use('/api/v1/magazine-issues', magazineIssuesRouter);
 app.use('/api/v1/contact', contactRouter);
 app.use('/api/v1/accommodation', accommodationRouter);
- app.use('/api/v1/home', homeRouter);
- app.use('/api/v1/payments', paymentsRouter);
+app.use('/api/v1/home', homeRouter);
+app.use('/api/v1/payments', paymentsRouter);
 app.use('/api/v1/devotees-admin', devoteeAdminRouter);
+// The 80G download must be mounted before the registers router
+app.use('/api/v1/registers/admin/donation80g', donation80gRouter);
 app.use('/api/v1/registers', registersRouter);
 app.use('/api/v1/pos', posRoutes);
 app.use('/api/v1/users', usersRouter);
