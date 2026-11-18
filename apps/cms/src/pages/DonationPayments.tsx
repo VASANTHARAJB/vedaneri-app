@@ -39,7 +39,7 @@ type Summary = {
 };
 type Member = { title: string; name: string; gothram: string; nakshathiram: string; rasi: string; relation: string };
 type Row = {
-  id: number; devotee_id: string; name: string; email: string | null; phone: string | null; city: string | null; state: string | null;
+  id: number; devotee_id: string; devotee_code?: string; name: string; email: string | null; phone: string | null; city: string | null; state: string | null;
   fund: string; category: string; amount: number; currency: string; status: 'PAID' | 'PENDING' | 'FAILED';
   donation_date: string | null; receipt_no: string | null; order_id: string | null; payment_id: string | null; has_pan: boolean; members: Member[]; paid_at: string;
 };
@@ -383,6 +383,7 @@ export default function DonationPayments() {
                             <div className="pdx-bar" role="img" aria-label={`${rate}% of attempts were paid`}><div style={{ width: `${rate}%`, background: rate >= 70 ? STATUS_COLOR.PAID : rate >= 40 ? STATUS_COLOR.PENDING : STATUS_COLOR.FAILED }} /></div>
                             <p className="pdx-sub">{rate}%</p>
                           </td>
+                          <td><button type="button" className="pdx-link" onClick={() => { setFund(t.fund); setCategory(t.category); setPage(1); goToTable(); }}>View</button></td>
                         </tr>
                       );
                     })}
@@ -542,7 +543,7 @@ export default function DonationPayments() {
                                   <div><dt>Transaction id (Razorpay payment)</dt><dd><Copyable value={r.payment_id} label="transaction id" /></dd></div>
                                   <div><dt>Razorpay order id</dt><dd><Copyable value={r.order_id} label="order id" /></dd></div>
                                   <div><dt>Receipt no</dt><dd>{r.receipt_no || '-'}</dd></div>
-                                  <div><dt>Donor (devotee) id</dt><dd>{r.devotee_id}</dd></div>
+                                  <div><dt>Donor (devotee) code</dt><dd>{r.devotee_code || r.devotee_id}</dd></div>
                                   <div><dt>Email</dt><dd>{r.email || '-'}</dd></div>
                                   <div><dt>Phone</dt><dd>{r.phone || '-'}</dd></div>
                                   <div><dt>City and state</dt><dd>{[r.city, r.state].filter(Boolean).join(', ') || '-'}</dd></div>

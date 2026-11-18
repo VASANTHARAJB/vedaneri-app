@@ -40,7 +40,7 @@ type Summary = {
   camps: string[];
 };
 type Row = {
-  id: number; devotee_id: string; name: string; email: string | null; phone: string | null; city: string | null; state: string | null;
+  id: number; devotee_id: string; devotee_code?: string; name: string; email: string | null; phone: string | null; city: string | null; state: string | null;
   camp: string; category: When; camp_start: string | null; camp_end: string | null; adults: number; children: number; people: number;
   amount: number; currency: string; status: 'PAID' | 'PENDING' | 'FAILED'; registration: string;
   order_id: string | null; payment_id: string | null; paid_at: string;
@@ -553,7 +553,7 @@ export default function CampPayments() {
                                   <div><dt>Transaction id (Razorpay payment)</dt><dd><Copyable value={r.payment_id} label="transaction id" /></dd></div>
                                   <div><dt>Razorpay order id</dt><dd><Copyable value={r.order_id} label="order id" /></dd></div>
                                   <div><dt>Registration</dt><dd>{REG_LABEL[r.registration] || r.registration || '-'}</dd></div>
-                                  <div><dt>Devotee id</dt><dd>{r.devotee_id}</dd></div>
+                                  <div><dt>Devotee code</dt><dd>{r.devotee_code || r.devotee_id}</dd></div>
                                   <div><dt>Email</dt><dd>{r.email || '-'}</dd></div>
                                   <div><dt>Phone</dt><dd>{r.phone || '-'}</dd></div>
                                   <div><dt>City and state</dt><dd>{[r.city, r.state].filter(Boolean).join(', ') || '-'}</dd></div>

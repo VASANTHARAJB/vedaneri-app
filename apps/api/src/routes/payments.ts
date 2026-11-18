@@ -180,7 +180,7 @@ router.get('/admin/export', async (req, res) => {
 // A "corpus" booking is a gift to the seva fund; a "seva" booking is a normal seva. (seva_bookings.category)
 // =====================================================================================================
 const SEVA_ROWS = `
-  SELECT b.id AS id, b.devotee_id AS devotee_id,
+  SELECT b.id AS id, b.devotee_id AS devotee_id, v.devotee_code AS devotee_code,
          TRIM(CONCAT(COALESCE(v.first_name,''),' ',COALESCE(v.last_name,''))) AS name,
          v.email AS email, v.phone AS phone, v.city AS city, v.state AS state,
          b.seva_id AS seva_id, b.seva_title AS seva, b.category AS category, b.amount AS amount, b.currency AS currency,
@@ -211,8 +211,8 @@ function sevaFilters(q: Request['query'], withText = true) {
   if (text) {
     const like = `%${text.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
     // devotee name, phone, email, devotee id, seva name, receipt, Razorpay ids, and the names written for the sankalpam
-    where.push('(s.name LIKE ? OR s.email LIKE ? OR s.phone LIKE ? OR s.devotee_id LIKE ? OR s.seva LIKE ? OR s.receipt_no LIKE ? OR s.order_id LIKE ? OR s.payment_id LIKE ? OR s.members LIKE ?)');
-    args.push(like, like, like, like, like, like, like, like, like);
+    where.push('(s.name LIKE ? OR s.email LIKE ? OR s.phone LIKE ? OR s.devotee_id LIKE ? OR s.devotee_code LIKE ? OR s.seva LIKE ? OR s.receipt_no LIKE ? OR s.order_id LIKE ? OR s.payment_id LIKE ? OR s.members LIKE ?)');
+    args.push(like, like, like, like, like, like, like, like, like, like);
   }
   return { sql: where.length ? `WHERE ${where.join(' AND ')}` : '', args } as const;
 }
@@ -228,7 +228,7 @@ function memberList(raw: unknown) {
 }
 const dateOnly = (d: any) => (d instanceof Date ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` : d ? String(d).slice(0, 10) : null);
 const sevaRow = (r: any) => ({
-  id: r.id, devotee_id: r.devotee_id, name: r.name || '', email: r.email, phone: r.phone, city: r.city, state: r.state,
+  id: r.id, devotee_id: r.devotee_id, devotee_code: r.devotee_code || '', name: r.name || '', email: r.email, phone: r.phone, city: r.city, state: r.state,
   seva: r.seva, category: r.category, amount: money(r.amount), currency: r.currency || 'INR', status: r.status,
   seva_date: dateOnly(r.seva_date), receipt_no: r.receipt_no, order_id: r.order_id, payment_id: r.payment_id,
   members: memberList(r.members), paid_at: r.paid_at instanceof Date ? r.paid_at.toISOString() : r.paid_at,
@@ -351,7 +351,7 @@ router.get('/admin/seva/export', async (req, res) => {
 // PAN, Aadhaar and the payment signature are never sent: only "PAN given: yes / no" is shown.
 // =====================================================================================================
 const DON_ROWS = `
-  SELECT b.id AS id, b.devotee_id AS devotee_id,
+  SELECT b.id AS id, b.devotee_id AS devotee_id, v.devotee_code AS devotee_code,
          TRIM(CONCAT(COALESCE(v.first_name,''),' ',COALESCE(v.last_name,''))) AS name,
          v.email AS email, v.phone AS phone,
          COALESCE(NULLIF(b.donor_city,''), v.city) AS city, COALESCE(NULLIF(b.donor_state,''), v.state) AS state,
@@ -383,14 +383,14 @@ function donFilters(q: Request['query'], withText = true) {
   const text = withText ? one(q.q).slice(0, 80) : '';
   if (text) {
     const like = `%${text.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
-    where.push('(d.name LIKE ? OR d.email LIKE ? OR d.phone LIKE ? OR d.devotee_id LIKE ? OR d.fund LIKE ? OR d.receipt_no LIKE ? OR d.order_id LIKE ? OR d.payment_id LIKE ? OR d.members LIKE ?)');
-    args.push(like, like, like, like, like, like, like, like, like);
+    where.push('(d.name LIKE ? OR d.email LIKE ? OR d.phone LIKE ? OR d.devotee_id LIKE ? OR d.devotee_code LIKE ? OR d.fund LIKE ? OR d.receipt_no LIKE ? OR d.order_id LIKE ? OR d.payment_id LIKE ? OR d.members LIKE ?)');
+    args.push(like, like, like, like, like, like, like, like, like, like);
   }
   return { sql: where.length ? `WHERE ${where.join(' AND ')}` : '', args } as const;
 }
 
 const donRow = (r: any) => ({
-  id: r.id, devotee_id: r.devotee_id, name: r.name || '', email: r.email, phone: r.phone, city: r.city, state: r.state,
+  id: r.id, devotee_id: r.devotee_id, devotee_code: r.devotee_code || '', name: r.name || '', email: r.email, phone: r.phone, city: r.city, state: r.state,
   fund: r.fund, category: r.category, amount: money(r.amount), currency: r.currency || 'INR', status: r.status,
   donation_date: dateOnly(r.donation_date), receipt_no: r.receipt_no, order_id: r.order_id, payment_id: r.payment_id,
   has_pan: Number(r.has_pan) === 1, members: memberList(r.members), paid_at: r.paid_at instanceof Date ? r.paid_at.toISOString() : r.paid_at,
@@ -509,7 +509,7 @@ router.get('/admin/donation/export', async (req, res) => {
 // "status" is the payment (PAID / PENDING / FAILED). "membership" is the subscription itself (ACTIVE / EXPIRED).
 // =====================================================================================================
 const MAG_ROWS = `
-  SELECT m.id AS id, m.devotee_id AS devotee_id,
+  SELECT m.id AS id, m.devotee_id AS devotee_id, v.devotee_code AS devotee_code,
          TRIM(CONCAT(COALESCE(m.first_name,''),' ',COALESCE(m.last_name,''))) AS name,
          m.email AS email, m.phone AS phone, m.address AS address, m.city AS city, m.state AS state, m.pincode AS pincode,
          m.plan_id AS plan_id, m.plan_name AS plan, m.delivery AS delivery, m.duration_months AS months,
@@ -518,7 +518,8 @@ const MAG_ROWS = `
          m.status AS membership, m.start_date AS start_date, m.end_date AS end_date,
          m.receipt_no AS receipt_no, m.razorpay_order_id AS order_id, m.razorpay_payment_id AS payment_id,
          COALESCE(NULLIF(m.payment_mode,''),'online') AS mode, m.reminder_30 AS r30, m.reminder_7 AS r7, m.created_at AS paid_at
-    FROM magazine_subscriptions m`;
+    FROM magazine_subscriptions m
+    LEFT JOIN devotees v ON CONVERT(v.id USING utf8mb4) COLLATE utf8mb4_unicode_ci = CONVERT(m.devotee_id USING utf8mb4) COLLATE utf8mb4_unicode_ci`;
 const DELIVERIES = ['print', 'digital', 'both'] as const;
 const MAG_SORT: Record<string, string> = {
   date: 'g.paid_at DESC, g.id DESC', oldest: 'g.paid_at ASC, g.id ASC',
@@ -545,14 +546,14 @@ function magFilters(q: Request['query'], withText = true) {
   const text = withText ? one(q.q).slice(0, 80) : '';
   if (text) {
     const like = `%${text.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
-    where.push('(g.name LIKE ? OR g.email LIKE ? OR g.phone LIKE ? OR g.devotee_id LIKE ? OR g.plan LIKE ? OR g.receipt_no LIKE ? OR g.order_id LIKE ? OR g.payment_id LIKE ? OR g.pincode LIKE ? OR g.city LIKE ?)');
-    args.push(like, like, like, like, like, like, like, like, like, like);
+    where.push('(g.name LIKE ? OR g.email LIKE ? OR g.phone LIKE ? OR g.devotee_id LIKE ? OR g.devotee_code LIKE ? OR g.plan LIKE ? OR g.receipt_no LIKE ? OR g.order_id LIKE ? OR g.payment_id LIKE ? OR g.pincode LIKE ? OR g.city LIKE ?)');
+    args.push(like, like, like, like, like, like, like, like, like, like, like);
   }
   return { sql: where.length ? `WHERE ${where.join(' AND ')}` : '', args } as const;
 }
 
 const magRow = (r: any) => ({
-  id: r.id, devotee_id: r.devotee_id, name: r.name || '', email: r.email, phone: r.phone,
+  id: r.id, devotee_id: r.devotee_id, devotee_code: r.devotee_code || '', name: r.name || '', email: r.email, phone: r.phone,
   address: r.address, city: r.city, state: r.state, pincode: r.pincode,
   plan: r.plan, delivery: r.delivery, months: Number(r.months) || 0, amount: money(r.amount), pay_account: r.pay_account,
   status: r.status, membership: r.membership, start_date: dateOnly(r.start_date), end_date: dateOnly(r.end_date),
@@ -686,7 +687,7 @@ router.get('/admin/magazine/export', async (req, res) => {
 // "upcoming" (not started), "ongoing", "past". Aadhaar, ID documents and photos are never read here.
 // =====================================================================================================
 const CAMP_ROWS = `
-  SELECT r.id AS id, r.devotee_id AS devotee_id,
+  SELECT r.id AS id, r.devotee_id AS devotee_id, v.devotee_code AS devotee_code,
          COALESCE(NULLIF(TRIM(CONCAT(COALESCE(r.first_name,''),' ',COALESCE(r.last_name,''))),''), NULLIF(r.name,''),
                   TRIM(CONCAT(COALESCE(v.first_name,''),' ',COALESCE(v.last_name,'')))) AS name,
          COALESCE(NULLIF(r.email,''), v.email) AS email, COALESCE(NULLIF(r.phone,''), v.phone) AS phone,
@@ -723,14 +724,14 @@ function campFilters(q: Request['query'], withText = true) {
   const text = withText ? one(q.q).slice(0, 80) : '';
   if (text) {
     const like = `%${text.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
-    where.push('(k.name LIKE ? OR k.email LIKE ? OR k.phone LIKE ? OR k.devotee_id LIKE ? OR k.camp LIKE ? OR k.order_id LIKE ? OR k.payment_id LIKE ?)');
-    args.push(like, like, like, like, like, like, like);
+    where.push('(k.name LIKE ? OR k.email LIKE ? OR k.phone LIKE ? OR k.devotee_id LIKE ? OR k.devotee_code LIKE ? OR k.camp LIKE ? OR k.order_id LIKE ? OR k.payment_id LIKE ?)');
+    args.push(like, like, like, like, like, like, like, like);
   }
   return { sql: where.length ? `WHERE ${where.join(' AND ')}` : '', args } as const;
 }
 
 const campRow = (r: any) => ({
-  id: r.id, devotee_id: r.devotee_id, name: r.name || '', email: r.email, phone: r.phone, city: r.city, state: r.state,
+  id: r.id, devotee_id: r.devotee_id, devotee_code: r.devotee_code || '', name: r.name || '', email: r.email, phone: r.phone, city: r.city, state: r.state,
   camp: r.camp, category: r.category, camp_start: dateOnly(r.camp_start), camp_end: dateOnly(r.camp_end),
   adults: Number(r.adults) || 0, children: Number(r.children) || 0, people: Number(r.people) || 0,
   amount: money(r.amount), currency: 'INR', status: r.status, registration: r.registration,

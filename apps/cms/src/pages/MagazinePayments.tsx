@@ -41,7 +41,7 @@ type Summary = {
   plans: string[];
 };
 type Row = {
-  id: number; devotee_id: string; name: string; email: string | null; phone: string | null; city: string | null; state: string | null;
+  id: number; devotee_id: string; devotee_code?: string; name: string; email: string | null; phone: string | null; city: string | null; state: string | null;
   address: string | null; pincode: string | null; plan: string; category: string; months: number; amount: number; pay_account: string;
   status: 'PAID' | 'PENDING' | 'FAILED'; membership: 'PENDING' | 'ACTIVE' | 'EXPIRED' | 'FAILED'; start_date: string | null; end_date: string | null;
   receipt_no: string | null; order_id: string | null; payment_id: string | null; mode: string; reminder_30: boolean; reminder_7: boolean; paid_at: string;
@@ -592,7 +592,7 @@ export default function MagazinePayments() {
                                   <div><dt>Transaction id (Razorpay payment)</dt><dd><Copyable value={r.payment_id} label="transaction id" /></dd></div>
                                   <div><dt>Razorpay order id</dt><dd><Copyable value={r.order_id} label="order id" /></dd></div>
                                   <div><dt>Receipt no</dt><dd>{r.receipt_no || '-'}</dd></div>
-                                  <div><dt>Subscriber (devotee) id</dt><dd>{r.devotee_id}</dd></div>
+                                  <div><dt>Subscriber (devotee) code</dt><dd>{r.devotee_code || r.devotee_id}</dd></div>
                                   <div><dt>Email</dt><dd>{r.email || '-'}</dd></div>
                                   <div><dt>Phone</dt><dd>{r.phone || '-'}</dd></div>
                                   <div><dt>Postal address</dt><dd>{[r.address, r.city, r.state, r.pincode].filter(Boolean).join(', ') || '-'}</dd></div>
