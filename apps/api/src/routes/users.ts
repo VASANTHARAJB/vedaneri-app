@@ -2,19 +2,38 @@ import express, { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { randomUUID } from 'crypto';
 import { pool } from '../db';
-import { requireStaff, invalidateStaff, Staff, pageCols, parsePages, ALL_PAGE_SLUGS, ADMINS } from '../middleware/roleAccess';
+import { staffFrom, invalidateStaff, Staff, pageCols, parsePages, ALL_PAGE_SLUGS, SUPER } from '../middleware/roleAccess';
 
-// Staff logins for the CMS. Super admin only.
+// Staff logins for the CMS.
+// A super admin sees and manages every login.
+// Any other login that has the "Users" page ticked (for example a general manager) manages only its own team: the logins it created itself.
+// A team login can never be given more than the manager has, and never a super admin, general manager or developer role.
 // Mount in index.ts:  app.use('/api/v1/users', usersRouter);
 const router = Router();
-router.use(requireStaff('superadmin'));
+router.use(async (req: Request, res: Response, next) => {
+  try {
+    const s = await staffFrom(req);
+    if (!s) return res.status(401).json({ message: 'Please sign in again.' });
+    if (!SUPER.includes(s.role) && !(s.pages || []).includes('users')) return res.status(403).json({ message: 'Your login does not have access to this page.' });
+    (req as any).staff = s;
+    return next();
+  } catch (e: any) {
+    console.error('Role check error:', e?.message || e);
+    return res.status(503).json({ message: 'Could not check your access. Please try again.' });
+  }
+});
 router.use(express.json({ limit: '20kb' }));
 router.use((_req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next(); });
 
-const STAFF_ROLES = ['superadmin', 'admin', 'website', 'payments', 'registration', 'sales', 'editor', 'priest'];
-const NEW_ROLES = ['superadmin', 'admin', 'website', 'payments', 'registration', 'sales'];
+const STAFF_ROLES = ['superadmin', 'admin', 'gm', 'developer', 'website', 'payments', 'registration', 'sales', 'editor', 'priest'];
+const NEW_ROLES = ['superadmin', 'admin', 'gm', 'developer', 'website', 'payments', 'registration', 'sales'];
+
+// The roles a manager (not a super admin) may give to its team, and the most logins one manager may have
+const TEAM_ROLES = ['admin', 'website', 'payments', 'registration', 'sales'];
+const TEAM_LIMIT = 50;
 
 const me = (req: Request) => (req as any).staff as Staff;
+const isSuperReq = (req: Request) => SUPER.includes(me(req).role);
 const text = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
@@ -25,21 +44,74 @@ function passwordProblem(p: string): string {
   return '';
 }
 
+// The users.role column may have been created as a fixed list (ENUM) that does not know "gm" and "developer".
+// Once per start, widen it to plain text. Nothing is lost: every existing value is kept.
+let rolesReady = false;
+async function ensureRoles(): Promise<void> {
+  if (rolesReady) return;
+  try {
+    const [r]: any = await pool.query(`SHOW COLUMNS FROM users LIKE 'role'`);
+    const type = String(r?.[0]?.Type || r?.[0]?.type || '').toLowerCase();
+    if (type.startsWith('enum')) {
+      await pool.query(`ALTER TABLE users MODIFY role VARCHAR(30) NOT NULL`);
+      console.log('[Users] users.role changed from a fixed list to VARCHAR(30) so gm and developer logins can be saved');
+    }
+    rolesReady = true;
+  } catch (e: any) {
+    console.error('[Users] could not widen users.role (run: ALTER TABLE users MODIFY role VARCHAR(30) NOT NULL;):', e?.sqlMessage || e?.message || e);
+  }
+}
+
+// users.created_by holds the id of the login that made this login. Added once, as an empty column, so nothing existing changes.
+let ownerReady = false;
+async function ensureOwner(): Promise<boolean> {
+  if (ownerReady) return true;
+  try {
+    const [r]: any = await pool.query(`SHOW COLUMNS FROM users LIKE 'created_by'`);
+    if (!r?.length) {
+      await pool.query(`ALTER TABLE users ADD COLUMN created_by VARCHAR(64) NULL`);
+      console.log('[Users] users.created_by column added');
+    }
+    ownerReady = true;
+  } catch (e: any) {
+    console.error('[Users] could not add users.created_by (run: ALTER TABLE users ADD COLUMN created_by VARCHAR(64) NULL;):', e?.sqlMessage || e?.message || e);
+  }
+  return ownerReady;
+}
+const NEEDS_OWNER = 'The users table needs one more column. Ask the developer to run: ALTER TABLE users ADD COLUMN created_by VARCHAR(64) NULL;';
+
 const COLS = 'id, email, phone, full_name, role, is_active, created_at, updated_at';
-const cols = async () => COLS + (await pageCols());
+const cols = async () => COLS + (await ensureOwner() ? ', created_by' : '') + (await pageCols());
 const shape = (r: any) => (r ? { ...r, page_access: parsePages(r.page_access) } : r);
 
-// The ticked pages from the request: null = use the pages of the role; otherwise a list of known pages.
-// Administrators always open everything, so nothing is stored for them.
-function pagesFrom(v: unknown, role: string): { value: string | null; error?: string } {
-  if (ADMINS.includes(role) || v === null || v === undefined) return { value: null };
-  if (!Array.isArray(v)) return { value: null, error: 'Choose the pages again.' };
+// The ticked pages from the request. Only a super admin opens everything, so nothing is stored for a super admin.
+// Every other role (including admin) opens only the ticked pages, so at least one page must be ticked.
+// allowed = the pages the person making the change may give (null = any page, for a super admin)
+function pagesFrom(v: unknown, role: string, allowed: string[] | null = null): { value: string | null; error?: string } {
+  if (SUPER.includes(role)) return { value: null };
+  if (!Array.isArray(v)) return { value: null, error: 'Tick the pages this login may open.' };
   const list = Array.from(new Set(v.filter((x): x is string => typeof x === 'string')));
   if (list.some((x) => !ALL_PAGE_SLUGS.includes(x))) return { value: null, error: 'One of the chosen pages is not known. Reload the page and try again.' };
-  if (!list.length) return { value: null, error: 'Tick at least one page, or use the pages of the role.' };
+  if (allowed && list.some((x) => !allowed.includes(x))) return { value: null, error: 'You can only give pages that you can open yourself.' };
+  if (!list.length) return { value: null, error: 'Tick at least one page this login may open.' };
   return { value: JSON.stringify(ALL_PAGE_SLUGS.filter((x) => list.includes(x))) };
 }
 const NEEDS_SQL = 'The users table needs the one-time update in apps/api/sql/user-page-access.sql.';
+
+// The pages a manager may give to its team: its own pages, except the Users page itself (a team cannot make teams)
+const givable = (req: Request): string[] | null => (isSuperReq(req) ? null : (me(req).pages || []).filter((p) => p !== 'users'));
+
+// One login the person may manage: a super admin any staff login, a manager only a login it created
+async function findTarget(req: Request, id: string): Promise<any | null> {
+  const [found]: any = await pool.query(`SELECT ${await cols()} FROM users WHERE id = ? LIMIT 1`, [id]);
+  const t = found?.[0];
+  if (!t || !STAFF_ROLES.includes(String(t.role))) return null;
+  if (!isSuperReq(req)) {
+    if (String(t.created_by || '') !== me(req).id) return null;
+    if (!TEAM_ROLES.includes(String(t.role))) return null;
+  }
+  return t;
+}
 
 // Another active super admin must always remain
 async function otherActiveSuperadmins(exceptId: string): Promise<number> {
@@ -47,13 +119,20 @@ async function otherActiveSuperadmins(exceptId: string): Promise<number> {
   return Number(rows?.[0]?.n || 0);
 }
 
-router.get('/', async (_req: Request, res: Response) => {
+router.get('/', async (req: Request, res: Response) => {
   try {
-    const [rows]: any = await pool.query(
-      `SELECT ${await cols()} FROM users WHERE role IN (${STAFF_ROLES.map(() => '?').join(',')}) ORDER BY created_at ASC`,
-      STAFF_ROLES
-    );
-    return res.json({ users: rows.map(shape) });
+    const list = await cols();
+    let rows: any[];
+    if (isSuperReq(req)) {
+      [rows] = (await pool.query(`SELECT ${list} FROM users WHERE role IN (${STAFF_ROLES.map(() => '?').join(',')}) ORDER BY created_at ASC`, STAFF_ROLES)) as any;
+    } else {
+      if (!(await ensureOwner())) return res.json({ users: [], limit: TEAM_LIMIT });
+      [rows] = (await pool.query(`SELECT ${list} FROM users WHERE created_by = ? AND role IN (${TEAM_ROLES.map(() => '?').join(',')}) ORDER BY created_at ASC`, [me(req).id, ...TEAM_ROLES])) as any;
+    }
+    // Who made each login, shown to a super admin
+    const names = new Map<string, string>(rows.map((r: any) => [String(r.id), String(r.full_name || r.email || '')]));
+    const out = rows.map((r: any) => ({ ...shape(r), created_by_name: r.created_by ? names.get(String(r.created_by)) || '' : '' }));
+    return res.json({ users: out, limit: TEAM_LIMIT, scope: isSuperReq(req) ? 'all' : 'team' });
   } catch (e: any) {
     console.error('Users list error:', e?.message || e);
     return res.status(500).json({ message: 'Could not load the users.' });
@@ -72,36 +151,39 @@ router.post('/', async (req: Request, res: Response) => {
     if (!EMAIL.test(email) || email.length > 150) return res.status(400).json({ message: 'Enter a valid email address.', field: 'email' });
     if (phone && !/^[+0-9][0-9 ()-]{5,19}$/.test(phone)) return res.status(400).json({ message: 'Enter a valid phone number or leave it empty.', field: 'phone' });
     if (!NEW_ROLES.includes(role)) return res.status(400).json({ message: 'Choose a role.', field: 'role' });
+    if (!isSuperReq(req) && !TEAM_ROLES.includes(role)) return res.status(403).json({ message: 'You cannot make a login with this role.', field: 'role' });
     const pw = passwordProblem(password);
     if (pw) return res.status(400).json({ message: pw, field: 'password' });
-    const pa = pagesFrom(req.body?.page_access, role);
+    const pa = pagesFrom(req.body?.page_access, role, givable(req));
     if (pa.error) return res.status(400).json({ message: pa.error, field: 'page_access' });
     if (pa.value && !(await pageCols())) return res.status(500).json({ message: NEEDS_SQL });
+    if (!(await ensureOwner())) {
+      if (!isSuperReq(req)) return res.status(500).json({ message: NEEDS_OWNER });
+    }
+    if (!isSuperReq(req)) {
+      const [cnt]: any = await pool.query('SELECT COUNT(*) AS n FROM users WHERE created_by = ?', [me(req).id]);
+      if (Number(cnt?.[0]?.n || 0) >= TEAM_LIMIT) return res.status(400).json({ message: `You can have at most ${TEAM_LIMIT} team logins. Remove one you no longer need.` });
+    }
+    await ensureRoles();
 
     const [dup]: any = await pool.query('SELECT id FROM users WHERE email = ? LIMIT 1', [email]);
     if (dup?.length) return res.status(409).json({ message: 'A login with this email already exists.', field: 'email' });
 
     const id = randomUUID();
     const hash = await bcrypt.hash(password, 10);
-    if (pa.value) {
-      await pool.query(
-        'INSERT INTO users (id, email, phone, password_hash, full_name, role, is_active, page_access) VALUES (?, ?, ?, ?, ?, ?, 1, ?)',
-        [id, email, phone || null, hash, full_name, role, pa.value]
-      );
-    } else {
-      await pool.query(
-        'INSERT INTO users (id, email, phone, password_hash, full_name, role, is_active) VALUES (?, ?, ?, ?, ?, ?, 1)',
-        [id, email, phone || null, hash, full_name, role]
-      );
-    }
-    console.log(`[Users] ${me(req).email} created ${email} (${role}${pa.value ? ', own pages: ' + pa.value : ''})`);
+    const fields = ['id', 'email', 'phone', 'password_hash', 'full_name', 'role', 'is_active'];
+    const vals: any[] = [id, email, phone || null, hash, full_name, role, 1];
+    if (ownerReady) { fields.push('created_by'); vals.push(me(req).id); }
+    if (pa.value) { fields.push('page_access'); vals.push(pa.value); }
+    await pool.query(`INSERT INTO users (${fields.join(', ')}) VALUES (${fields.map(() => '?').join(', ')})`, vals);
+    console.log(`[Users] ${me(req).email} created ${email} (${role}${pa.value ? ', pages: ' + pa.value : ''})`);
     const [rows]: any = await pool.query(`SELECT ${await cols()} FROM users WHERE id = ?`, [id]);
     return res.status(201).json({ user: shape(rows[0]) });
   } catch (e: any) {
     if (e?.code === 'ER_DUP_ENTRY') return res.status(409).json({ message: 'A login with this email or phone already exists.' });
     if (e?.code === 'ER_BAD_NULL_ERROR' || e?.code === 'ER_WARN_DATA_OUT_OF_RANGE' || e?.code === 'WARN_DATA_TRUNCATED' || e?.code === 'ER_TRUNCATED_WRONG_VALUE_FOR_FIELD') {
-      console.error('Users create error (run apps/api/sql/staff-roles.sql):', e?.sqlMessage || e?.message);
-      return res.status(500).json({ message: 'The users table needs the one-time update in apps/api/sql/staff-roles.sql.' });
+      console.error('Users create error (run ALTER TABLE users MODIFY role VARCHAR(30) NOT NULL;):', e?.sqlMessage || e?.message);
+      return res.status(500).json({ message: 'The users table does not accept this role yet. Run: ALTER TABLE users MODIFY role VARCHAR(30) NOT NULL;' });
     }
     console.error('Users create error:', e?.sqlMessage || e?.message || e);
     return res.status(500).json({ message: 'Could not create the login.' });
@@ -111,9 +193,8 @@ router.post('/', async (req: Request, res: Response) => {
 router.patch('/:id', async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
-    const [found]: any = await pool.query(`SELECT ${await cols()} FROM users WHERE id = ? LIMIT 1`, [id]);
-    const target = found?.[0];
-    if (!target || !STAFF_ROLES.includes(String(target.role))) return res.status(404).json({ message: 'User not found.' });
+    const target = await findTarget(req, id);
+    if (!target) return res.status(404).json({ message: 'User not found.' });
 
     const self = me(req).id === id;
     const sets: string[] = [];
@@ -134,7 +215,9 @@ router.patch('/:id', async (req: Request, res: Response) => {
     const newActive = req.body?.is_active !== undefined ? (req.body.is_active ? 1 : 0) : Number(target.is_active);
     if (newRole !== String(target.role)) {
       if (!NEW_ROLES.includes(newRole)) return res.status(400).json({ message: 'Choose a valid role.', field: 'role' });
+      if (!isSuperReq(req) && !TEAM_ROLES.includes(newRole)) return res.status(403).json({ message: 'You cannot give this role.', field: 'role' });
       if (self) return res.status(400).json({ message: 'You cannot change your own role.', field: 'role' });
+      await ensureRoles();
       sets.push('role = ?'); vals.push(newRole);
     }
     if (newActive !== Number(target.is_active)) {
@@ -153,9 +236,11 @@ router.patch('/:id', async (req: Request, res: Response) => {
       sets.push('password_hash = ?'); vals.push(await bcrypt.hash(pw, 10));
     }
 
-    // Pages: sent when changed. An administrator role clears them, because administrators open everything.
-    if (req.body?.page_access !== undefined || (newRole !== String(target.role) && ADMINS.includes(newRole))) {
-      const pa = pagesFrom(req.body?.page_access, newRole);
+    // Pages: sent when changed. A super admin role clears them, because a super admin opens everything.
+    // A login moved from super admin to another role must be given pages in the same save.
+    const roleChanged = newRole !== String(target.role);
+    if (req.body?.page_access !== undefined || (roleChanged && (SUPER.includes(newRole) || SUPER.includes(String(target.role))))) {
+      const pa = pagesFrom(req.body?.page_access, newRole, givable(req));
       if (pa.error) return res.status(400).json({ message: pa.error, field: 'page_access' });
       if (!(await pageCols())) {
         if (pa.value) return res.status(500).json({ message: NEEDS_SQL });
@@ -172,8 +257,8 @@ router.patch('/:id', async (req: Request, res: Response) => {
     return res.json({ user: shape(rows[0]) });
   } catch (e: any) {
     if (e?.code === 'WARN_DATA_TRUNCATED' || e?.code === 'ER_BAD_NULL_ERROR' || e?.code === 'ER_TRUNCATED_WRONG_VALUE_FOR_FIELD') {
-      console.error('Users update error (run apps/api/sql/staff-roles.sql):', e?.sqlMessage || e?.message);
-      return res.status(500).json({ message: 'The users table needs the one-time update in apps/api/sql/staff-roles.sql.' });
+      console.error('Users update error (run ALTER TABLE users MODIFY role VARCHAR(30) NOT NULL;):', e?.sqlMessage || e?.message);
+      return res.status(500).json({ message: 'The users table does not accept this role yet. Run: ALTER TABLE users MODIFY role VARCHAR(30) NOT NULL;' });
     }
     console.error('Users update error:', e?.sqlMessage || e?.message || e);
     return res.status(500).json({ message: 'Could not save the changes.' });
@@ -184,9 +269,8 @@ router.delete('/:id', async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id);
     if (me(req).id === id) return res.status(400).json({ message: 'You cannot delete your own login.' });
-    const [found]: any = await pool.query('SELECT id, email, role, is_active FROM users WHERE id = ? LIMIT 1', [id]);
-    const target = found?.[0];
-    if (!target || !STAFF_ROLES.includes(String(target.role))) return res.status(404).json({ message: 'User not found.' });
+    const target = await findTarget(req, id);
+    if (!target) return res.status(404).json({ message: 'User not found.' });
     if (String(target.role) === 'superadmin' && Number(target.is_active) === 1 && (await otherActiveSuperadmins(id)) < 1) {
       return res.status(400).json({ message: 'At least one active super admin must remain.' });
     }

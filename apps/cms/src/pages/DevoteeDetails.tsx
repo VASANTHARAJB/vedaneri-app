@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { API, CSS, Notice, authHeader, failText, fileUrl, readJson, useFlash } from './DiscoverKit';
 import { PDX_CSS, inr, rangeOf, when, ymd } from './PaymentCharts';
 import type { Preset } from './PaymentCharts';
+import { pageList } from './reportKit';
 
 // API points at .../api/v1/discover. The devotee API is .../api/v1/devotees-admin/admin/devotees
 const API_BASE = String(API).replace(/\/discover\/?$/, '');
@@ -10,7 +11,7 @@ const G80 = `${API_BASE}/devotees-admin/admin/donations-80g/export`;
 
 type Totals = { donation: number; seva: number; camp: number; magazine: number };
 type Devotee = {
-  id: string; name: string; email: string | null; phone: string | null; residency: 'indian' | 'nri'; city: string | null; state: string | null;
+  id: string; code: string; name: string; email: string | null; phone: string | null; residency: 'indian' | 'nri'; city: string | null; state: string | null;
   comm_address: string | null; perm_address: string | null; avatar_url: string | null; verified: boolean; login: 'google' | 'password'; has_pan: boolean;
   joined_at: string; last_active: string; last_paid: string | null; pay_count: number; pay_total: number; family_count: number; totals: Totals;
 };
@@ -25,6 +26,7 @@ const SOURCE_LABEL: Record<string, string> = { donation: 'Donation', seva: 'Seva
 const SOURCE_COLOR: Record<string, string> = { donation: '#7a1c1c', seva: '#ea580c', camp: '#e0a526', magazine: '#7c3aed' };
 const STATUS_LABEL: Record<string, string> = { PAID: 'Paid', PENDING: 'Pending', FAILED: 'Failed' };
 const STATUS_COLOR: Record<string, string> = { PAID: '#15803d', PENDING: '#b45309', FAILED: '#b91c1c' };
+const PAGE_SIZES = [10, 25, 50, 100];
 const SORTS: [string, string][] = [['newest', 'Newest first'], ['oldest', 'Oldest first'], ['name', 'Name A-Z'], ['paid', 'Most paid'], ['active', 'Recently active'], ['family', 'Most family members']];
 
 const csvDate = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '-');
@@ -117,8 +119,79 @@ function PanBox({ id }: { id: string }) {
   );
 }
 
-// The panel that opens under a devotee: profile, family and every payment
-function Panel({ id, onPick }: { id: string; onPick: (v: string) => void }) {
+// One labelled value: a small grey label above the value
+function Field({ label, children, wide }: { label: string; children: React.ReactNode; wide?: boolean }) {
+  return (
+    <div className="dvm-f" style={wide ? { gridColumn: '1 / -1' } : undefined}>
+      <span className="dvm-l">{label}</span>
+      <div className="dvm-v">{children}</div>
+    </div>
+  );
+}
+const Section = ({ title, note, children }: { title: string; note?: string; children: React.ReactNode }) => (
+  <section className="dvm-sec">
+    <h3>{title}</h3>
+    {note && <p className="pdx-sub" style={{ margin: '-4px 0 10px' }}>{note}</p>}
+    {children}
+  </section>
+);
+const Dash = () => <span className="dvm-none">Not given</span>;
+
+// The communication address, with a Change button. Saving writes it to the devotee's profile.
+function AddressEditor({ id, value, onSaved }: { id: string; value: string | null; onSaved: (v: string) => void }) {
+  const [edit, setEdit] = useState(false);
+  const [text, setText] = useState(value || '');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [saved, setSaved] = useState(false);
+  useEffect(() => { if (!edit) setText(value || ''); }, [value, edit]);
+  const clean = text.replace(/\r\n/g, '\n').trim();
+  const same = clean === (value || '').trim();
+  async function save() {
+    if (busy) return;
+    if (clean.length > 500) { setErr('The address is too long (500 letters at most).'); return; }
+    setBusy(true); setErr('');
+    try {
+      const res = await fetch(`${DV}/${encodeURIComponent(id)}/address`, {
+        method: 'PUT', headers: { ...authHeader(), 'Content-Type': 'application/json' }, body: JSON.stringify({ comm_address: clean }),
+      });
+      const j = await readJson(res);
+      if (!res.ok) throw new Error(failText(j, `Could not save the address (${res.status}).`));
+      onSaved(String(j?.comm_address ?? clean));
+      setEdit(false); setSaved(true); setTimeout(() => setSaved(false), 3000);
+    } catch (e: any) { setErr(e?.message || 'Could not save the address.'); } finally { setBusy(false); }
+  }
+  if (!edit) {
+    return (
+      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+        <div style={{ flex: 1, minWidth: 200, whiteSpace: 'pre-line' }}>{value ? value : <Dash />}</div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {saved && <span role="status" style={{ color: STATUS_COLOR.PAID, fontSize: 13, fontWeight: 700 }}>Saved</span>}
+          <button type="button" className="pdx-btn" onClick={() => { setText(value || ''); setErr(''); setEdit(true); }}>{value ? 'Change address' : 'Add address'}</button>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div>
+      <textarea id={`addr-${id}`} className="pdx-inp" style={{ width: '100%', minHeight: 96, resize: 'vertical', fontFamily: 'inherit', fontSize: 14, lineHeight: 1.4 }}
+        value={text} maxLength={600} autoFocus aria-label="Communication address" aria-invalid={!!err}
+        placeholder="House or flat number, street, area, city, state and PIN code"
+        onChange={(e) => { setText(e.target.value); setErr(''); }}
+        onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); e.nativeEvent.stopImmediatePropagation?.(); setEdit(false); setErr(''); } }} />
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8, flexWrap: 'wrap' }}>
+        <button type="button" className="pdx-btn on" onClick={save} disabled={busy || same}>{busy ? 'Saving...' : 'Save address'}</button>
+        <button type="button" className="pdx-btn" onClick={() => { setEdit(false); setErr(''); }} disabled={busy}>Cancel</button>
+        <span className="pdx-sub" style={{ marginLeft: 'auto' }}>{clean.length}/500</span>
+      </div>
+      {clean === '' && !same && <p className="pdx-sub" style={{ marginTop: 6 }}>Saving an empty box removes the address.</p>}
+      {err && <p role="alert" className="pdx-err" style={{ marginTop: 8 }}>{err}</p>}
+    </div>
+  );
+}
+
+// The content of the popup: every detail of one devotee, each with its own label
+function Panel({ id, onPick, onAddress }: { id: string; onPick: (v: string) => void; onAddress: (id: string, v: string) => void }) {
   const [data, setData] = useState<Detail | null>(null);
   const [err, setErr] = useState('');
   useEffect(() => {
@@ -136,88 +209,199 @@ function Panel({ id, onPick }: { id: string; onPick: (v: string) => void }) {
   }, [id]);
 
   if (err) return <p role="alert" className="pdx-err">{err}</p>;
-  if (!data) return <p className="pdx-sub">Loading...</p>;
+  if (!data) return <p className="pdx-sub">Loading the devotee...</p>;
   const d = data.devotee;
-  const mix = (Object.keys(SOURCE_LABEL) as (keyof Totals)[]).filter((k) => d.totals[k] > 0);
+  const mix = (Object.keys(SOURCE_LABEL) as (keyof Totals)[]);
   return (
     <div>
-      <dl>
-        <div><dt>Devotee id</dt><dd>{d.id}</dd></div>
-        <div><dt>Email</dt><dd>{d.email || '-'} {d.email && <span className="pdx-pill" style={{ marginLeft: 6 }}><i style={{ background: d.verified ? STATUS_COLOR.PAID : STATUS_COLOR.PENDING }} />{d.verified ? 'Verified' : 'Not verified'}</span>}</dd></div>
-        <div><dt>Phone</dt><dd>{d.phone ? (telHref(d.phone) ? <a className="pdx-link" style={{ padding: 0 }} href={telHref(d.phone)}>{d.phone}</a> : d.phone) : '-'}</dd></div>
-        <div><dt>Residency</dt><dd>{d.residency === 'nri' ? 'NRI' : 'Indian resident'}</dd></div>
-        <div><dt>Communication address</dt><dd>{[d.comm_address, d.city, d.state].filter(Boolean).join(', ') || '-'}</dd></div>
-        <div><dt>Permanent address</dt><dd>{d.perm_address || '-'}</dd></div>
-        <div><dt>Signs in with</dt><dd>{d.login === 'google' ? 'Google' : 'Email and password'}</dd></div>
-        <div><dt>PAN given</dt><dd>{d.has_pan ? 'Yes' : 'No'}</dd></div>
-        <div><dt>Joined</dt><dd>{csvDate(d.joined_at)}</dd></div>
-        <div><dt>Last paid</dt><dd>{csvDate(d.last_paid)}</dd></div>
-      </dl>
-
-      <PanBox id={d.id} />
-
-      <p style={{ fontWeight: 700, margin: '14px 0 6px' }}>Money given: {inr(d.pay_total)} in {d.pay_count} payment{d.pay_count === 1 ? '' : 's'}</p>
-      {mix.length === 0 ? <p className="pdx-sub">Nothing paid yet.</p> : (
-        <div className="pdx-row">{mix.map((k) => <span key={k} className="pdx-pill"><i style={{ background: SOURCE_COLOR[k] }} />{SOURCE_LABEL[k]} {inr(d.totals[k])}</span>)}</div>
-      )}
-
-      <p style={{ fontWeight: 700, margin: '14px 0 6px' }}>Family members saved for sankalpam ({data.family.length})</p>
-      {data.family.length === 0 ? <p className="pdx-sub">No family members saved.</p> : (
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ minWidth: 520, fontSize: 13 }}>
-            <thead><tr>{['Name', 'Relation', 'Gothram', 'Nakshatram', 'Rasi'].map((h) => <th key={h} scope="col" style={{ padding: '6px 10px' }}>{h}</th>)}</tr></thead>
-            <tbody>
-              {data.family.map((m) => (
-                <tr key={m.id}>
-                  <td style={{ padding: '6px 10px' }}>{[m.title, m.name].filter(Boolean).join(' ') || '-'}</td>
-                  <td style={{ padding: '6px 10px' }}>{m.relation || '-'}</td>
-                  <td style={{ padding: '6px 10px' }}>{m.gothram || '-'}</td>
-                  <td style={{ padding: '6px 10px' }}>{m.nakshathiram || '-'}</td>
-                  <td style={{ padding: '6px 10px' }}>{m.rasi || '-'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <Section title="Personal details">
+        <div className="dvm-grid">
+          <Field label="Devotee name">{d.name || <Dash />}</Field>
+          <Field label="Devotee ID"><b style={{ letterSpacing: '.04em' }}>{d.code || d.id}</b></Field>
+          <Field label="Residency">{d.residency === 'nri' ? 'NRI (lives outside India)' : 'Indian resident'}</Field>
+          <Field label="Joined on">{csvDate(d.joined_at)}</Field>
+          <Field label="Last active">{when(d.last_active)}</Field>
+          <Field label="Last paid on">{d.last_paid ? csvDate(d.last_paid) : <span className="dvm-none">Never paid</span>}</Field>
         </div>
-      )}
+      </Section>
 
-      <p style={{ fontWeight: 700, margin: '14px 0 6px' }}>Payments and bookings ({data.payments.length})</p>
-      {data.payments.length === 0 ? <p className="pdx-sub">No payments yet.</p> : (
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ minWidth: 640, fontSize: 13 }}>
-            <thead><tr>{['Date', 'Type', 'For', 'Amount', 'Status', 'Receipt'].map((h) => <th key={h} scope="col" style={{ padding: '6px 10px', textAlign: h === 'Amount' ? 'right' : 'left' }}>{h}</th>)}</tr></thead>
-            <tbody>
-              {data.payments.map((p, i) => (
-                <tr key={i}>
-                  <td style={{ padding: '6px 10px', whiteSpace: 'nowrap' }}>{when(p.paid_at)}</td>
-                  <td style={{ padding: '6px 10px' }}><span className="pdx-pill"><i style={{ background: SOURCE_COLOR[p.source] }} />{SOURCE_LABEL[p.source]}</span></td>
-                  <td style={{ padding: '6px 10px' }}>{p.item}</td>
-                  <td style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 800, whiteSpace: 'nowrap' }}>{inr(p.amount)}</td>
-                  <td style={{ padding: '6px 10px' }}><span className="pdx-pill"><i style={{ background: STATUS_COLOR[p.status] }} />{STATUS_LABEL[p.status]}</span></td>
-                  <td style={{ padding: '6px 10px' }}>{p.receipt_no || '-'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <Section title="Contact and sign-in">
+        <div className="dvm-grid">
+          <Field label="Mobile number">{d.phone ? (telHref(d.phone) ? <a className="pdx-link" style={{ padding: 0 }} href={telHref(d.phone)}>{d.phone}</a> : d.phone) : <Dash />}</Field>
+          <Field label="Email address"><span style={{ wordBreak: 'break-all' }}>{d.email || <Dash />}</span></Field>
+          <Field label="Email status">{d.email ? <span className="pdx-pill"><i style={{ background: d.verified ? STATUS_COLOR.PAID : STATUS_COLOR.PENDING }} />{d.verified ? 'Verified' : 'Not verified'}</span> : <Dash />}</Field>
+          <Field label="Signs in with">{d.login === 'google' ? 'Google account' : 'Email and password'}</Field>
         </div>
-      )}
+      </Section>
+
+      <Section title="Address">
+        <div className="dvm-grid">
+          <Field label="City">{d.city || <Dash />}</Field>
+          <Field label="State">{d.state || <Dash />}</Field>
+          <Field label="Communication address" wide><AddressEditor id={d.id} value={d.comm_address} onSaved={(v) => { setData((x) => (x ? { ...x, devotee: { ...x.devotee, comm_address: v || null } } : x)); onAddress(d.id, v); }} /></Field>
+          <Field label="Permanent address" wide>{d.perm_address || <Dash />}</Field>
+        </div>
+      </Section>
+
+      <Section title="Giving summary" note="Money counted only for paid payments.">
+        <div className="dvm-grid">
+          <Field label="Total given"><b style={{ fontSize: 18 }}>{inr(d.pay_total)}</b></Field>
+          <Field label="Number of paid payments">{d.pay_count}</Field>
+          <Field label="Family members saved">{d.family_count}</Field>
+          <Field label="PAN given for 80G">{d.has_pan ? 'Yes' : 'No'}</Field>
+        </div>
+        <div className="dvm-grid" style={{ marginTop: 10 }}>
+          {mix.map((k) => (
+            <Field key={k} label={`${SOURCE_LABEL[k]} total`}>
+              <span className="pdx-pill"><i style={{ background: SOURCE_COLOR[k] }} />{inr(d.totals[k])}</span>
+            </Field>
+          ))}
+        </div>
+        <PanBox id={d.id} />
+      </Section>
+
+      <Section title={`Family members for sankalpam (${data.family.length})`}>
+        {data.family.length === 0 ? <p className="pdx-sub">No family members saved.</p> : (
+          <div className="dvm-tw">
+            <table className="dvm-table" style={{ minWidth: 560 }}>
+              <thead><tr>{['No.', 'Name', 'Relation', 'Gothram', 'Nakshatram', 'Rasi'].map((h) => <th key={h} scope="col">{h}</th>)}</tr></thead>
+              <tbody>
+                {data.family.map((m, i) => (
+                  <tr key={m.id}>
+                    <td>{i + 1}</td>
+                    <td>{[m.title, m.name].filter(Boolean).join(' ') || '-'}</td>
+                    <td>{m.relation || '-'}</td>
+                    <td>{m.gothram || '-'}</td>
+                    <td>{m.nakshathiram || '-'}</td>
+                    <td>{m.rasi || '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Section>
+
+      <Section title={`Payments and bookings (${data.payments.length})`}>
+        {data.payments.length === 0 ? <p className="pdx-sub">No payments yet.</p> : (
+          <div className="dvm-tw">
+            <table className="dvm-table" style={{ minWidth: 720 }}>
+              <thead><tr>{['Date and time', 'Type', 'Paid for', 'Amount', 'Status', 'Receipt no', 'Transaction id'].map((h) => <th key={h} scope="col" style={{ textAlign: h === 'Amount' ? 'right' : 'left' }}>{h}</th>)}</tr></thead>
+              <tbody>
+                {data.payments.map((p, i) => (
+                  <tr key={i}>
+                    <td style={{ whiteSpace: 'nowrap' }}>{when(p.paid_at)}</td>
+                    <td><span className="pdx-pill"><i style={{ background: SOURCE_COLOR[p.source] }} />{SOURCE_LABEL[p.source] || p.source}</span></td>
+                    <td>{p.item}</td>
+                    <td style={{ textAlign: 'right', fontWeight: 800, whiteSpace: 'nowrap' }}>{inr(p.amount)}</td>
+                    <td><span className="pdx-pill"><i style={{ background: STATUS_COLOR[p.status] }} />{STATUS_LABEL[p.status]}</span></td>
+                    <td>{p.receipt_no || '-'}</td>
+                    <td style={{ wordBreak: 'break-all', fontSize: 12 }}>{p.payment_id || '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Section>
 
       {data.camps.length > 0 && (
-        <>
-          <p style={{ fontWeight: 700, margin: '14px 0 6px' }}>Camp registrations ({data.camps.length})</p>
-          {data.camps.map((c) => (
-            <div className="pdx-donor" key={c.id}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ fontWeight: 700 }}>{c.title}</p>
-                <p className="pdx-sub">{c.adults} adult{c.adults === 1 ? '' : 's'}{c.children ? `, ${c.children} child${c.children === 1 ? '' : 'ren'}` : ''} · {dateLabel(c.registered_at.slice(0, 10))} · {c.status.toLowerCase()}</p>
-              </div>
-              <b>{c.amount > 0 ? inr(c.amount) : 'No fee'}</b>
-            </div>
-          ))}
-        </>
+        <Section title={`Camp registrations (${data.camps.length})`}>
+          <div className="dvm-tw">
+            <table className="dvm-table" style={{ minWidth: 640 }}>
+              <thead><tr>{['Camp', 'Registered on', 'Adults', 'Children', 'Registration', 'Payment', 'Fee'].map((h) => <th key={h} scope="col" style={{ textAlign: h === 'Fee' ? 'right' : 'left' }}>{h}</th>)}</tr></thead>
+              <tbody>
+                {data.camps.map((c) => (
+                  <tr key={c.id}>
+                    <td style={{ fontWeight: 700 }}>{c.title}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>{dateLabel(c.registered_at.slice(0, 10))}</td>
+                    <td>{c.adults}</td>
+                    <td>{c.children}</td>
+                    <td style={{ textTransform: 'capitalize' }}>{c.status.toLowerCase()}</td>
+                    <td>{c.amount > 0 ? (STATUS_LABEL[c.payment_status] || c.payment_status.toLowerCase()) : 'No fee'}</td>
+                    <td style={{ textAlign: 'right', fontWeight: 800 }}>{c.amount > 0 ? inr(c.amount) : '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Section>
       )}
-      <div style={{ marginTop: 12 }}>
-        <button type="button" className="pdx-btn" onClick={() => onPick(d.id)}>Show only this devotee</button>
+
+      <div style={{ marginTop: 4 }}>
+        <button type="button" className="pdx-btn" onClick={() => onPick(d.code || d.id)}>Show only this devotee in the list</button>
+      </div>
+    </div>
+  );
+}
+
+const MODAL_CSS = `
+.dvm-back{position:fixed;inset:0;z-index:1000;background:rgba(40,12,12,.55);display:flex;align-items:center;justify-content:center;padding:20px}
+.dvm{background:#fff;color:#1f1f1f;width:min(920px,100%);max-height:min(92vh,100%);border-radius:16px;box-shadow:0 24px 70px rgba(0,0,0,.35);display:flex;flex-direction:column;overflow:hidden}
+.dvm-head{display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid #f0e2c8;background:#fff8ec}
+.dvm-body{padding:16px 18px 20px;overflow:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+.dvm-sec{border:1px solid #f0e2c8;border-radius:12px;padding:14px 16px;margin-bottom:14px;background:#fff}
+.dvm-sec>h3{font-size:13px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:#7a1c1c;margin:0 0 12px;padding-bottom:8px;border-bottom:2px solid #fde7b0}
+.dvm-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px 18px}
+.dvm-f{min-width:0}
+.dvm-l{display:block;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#7a6a5a;margin-bottom:3px}
+.dvm-v{font-size:15px;font-weight:600;color:#1f1f1f;word-break:break-word}
+.dvm-none{font-weight:400;color:#9a8f85;font-style:italic}
+.dvm-tw{overflow-x:auto;border:1px solid #f0e2c8;border-radius:10px}
+.dvm-table{width:100%;border-collapse:collapse;font-size:13px}
+.dvm-table th{background:#7a1c1c;color:#fff;text-align:left;padding:8px 10px;font-weight:700;white-space:nowrap}
+.dvm-table td{padding:8px 10px;border-top:1px solid #f0e2c8;vertical-align:top}
+.dvm-table tbody tr:nth-child(even){background:#fffaf4}
+.dvm-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 18px;border-top:1px solid #f0e2c8;background:#fff8ec;flex-wrap:wrap}
+@media (max-width:640px){.dvm-back{padding:0;align-items:flex-end}.dvm{width:100%;max-height:96vh;border-radius:16px 16px 0 0}}
+`;
+
+// The popup that shows one devotee: profile, PAN on request, family and every payment
+function DevoteeModal({ d, index, count, onClose, onMove, onPick, onAddress }: { d: Devotee; index: number; count: number; onClose: () => void; onMove: (step: number) => void; onPick: (v: string) => void; onAddress: (id: string, v: string) => void }) {
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden'; // the page behind does not scroll
+    closeRef.current?.focus();
+    return () => { document.body.style.overflow = prevOverflow; };
+  }, []);
+  useEffect(() => { bodyRef.current?.scrollTo({ top: 0 }); }, [d.id]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.stopPropagation(); onClose(); return; }
+      if (e.key === 'Tab') { // keep the focus inside the popup
+        const box = document.getElementById('dvm-box');
+        const items = box ? Array.from(box.querySelectorAll<HTMLElement>('button:not([disabled]),a[href],select,input,[tabindex]:not([tabindex="-1"])')) : [];
+        if (items.length === 0) return;
+        const first = items[0], last = items[items.length - 1];
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return (
+    <div className="dvm-back" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div id="dvm-box" className="dvm" role="dialog" aria-modal="true" aria-labelledby="dvm-title">
+        <div className="dvm-head">
+          <Avatar d={d} size={44} />
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <h2 id="dvm-title" style={{ fontSize: 18, fontWeight: 800, color: '#7a1c1c', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.name || 'No name'}</h2>
+            <p className="pdx-sub">{d.code || d.id} · {[d.city, d.state].filter(Boolean).join(', ') || (d.residency === 'nri' ? 'NRI' : 'Indian resident')} · joined {csvDate(d.joined_at)}</p>
+          </div>
+          <button ref={closeRef} type="button" className="pdx-btn" onClick={onClose} aria-label="Close devotee details">Close</button>
+        </div>
+        <div className="dvm-body" ref={bodyRef}>
+          <Panel id={d.id} onPick={onPick} onAddress={onAddress} />
+        </div>
+        <div className="dvm-foot">
+          <button type="button" className="pdx-btn" disabled={index <= 0} onClick={() => onMove(-1)}>Previous devotee</button>
+          <span className="pdx-sub">{index >= 0 ? `${index + 1} of ${count} on this page` : ''}</span>
+          <button type="button" className="pdx-btn" disabled={index < 0 || index >= count - 1} onClick={() => onMove(1)}>Next devotee</button>
+        </div>
       </div>
     </div>
   );
@@ -240,13 +424,14 @@ export default function DevoteeDetails() {
   const [out, setOut] = useState<ListOut | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
-  const [open, setOpen] = useState<string | null>(null);
+  const [view, setView] = useState<Devotee | null>(null); // the devotee shown in the popup
+  const [limit, setLimit] = useState(25);
+  const lastBtn = useRef<HTMLElement | null>(null);
   const [busy, setBusy] = useState(false);
   const now = new Date();
   const thisFy = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1; // Indian financial year starts in April
   const [fy, setFy] = useState(thisFy);
   const [busy80, setBusy80] = useState(false);
-  const LIMIT = 25;
   const seq = useRef(0);
 
   useEffect(() => {
@@ -271,7 +456,7 @@ export default function DevoteeDetails() {
     const mine = ++seq.current;
     setLoading(true); setErr('');
     try {
-      const p = qs(); p.set('page', String(page)); p.set('limit', String(LIMIT)); p.set('sort', sort);
+      const p = qs(); p.set('page', String(page)); p.set('limit', String(limit)); p.set('sort', sort);
       const res = await fetch(`${DV}/list?${p}`, { headers: authHeader(), cache: 'no-store' });
       const j = await readJson(res);
       if (!res.ok) throw new Error(failText(j, `Could not load the devotees (${res.status}).`));
@@ -279,7 +464,7 @@ export default function DevoteeDetails() {
     } catch (e: any) {
       if (mine === seq.current) setErr(`${e?.message || 'Could not load the devotees.'} [${DV}]`);
     } finally { if (mine === seq.current) setLoading(false); }
-  }, [qs, page, sort]);
+  }, [qs, page, sort, limit]);
   useEffect(() => { load(); }, [load]);
 
   function choose(p: Preset) {
@@ -317,7 +502,11 @@ export default function DevoteeDetails() {
 
   const rows = out?.items || [];
   const total = out?.total || 0;
-  const pages = Math.max(1, Math.ceil(total / LIMIT));
+  const pages = Math.max(1, Math.ceil(total / limit));
+  const showFrom = total === 0 ? 0 : (page - 1) * limit + 1;
+  const showTo = Math.min(total, page * limit);
+  const viewIndex = view ? rows.findIndex((x) => x.id === view.id) : -1;
+  const closeView = () => { setView(null); setTimeout(() => lastBtn.current?.focus(), 0); };
   const filtered = !!(residency || state || verified || paid || login || qNow);
   const periodText = from || to ? `${from ? dateLabel(from) : 'the start'} to ${to ? dateLabel(to) : 'today'}` : 'all dates';
   const t = out?.totals;
@@ -326,6 +515,7 @@ export default function DevoteeDetails() {
     <div className="dc">
       <style>{CSS}</style>
       <style>{PDX_CSS}</style>
+      <style>{MODAL_CSS}</style>
       <Notice notice={notice} onClear={clear} />
       <div className="pdx">
         <div className="pdx-top">
@@ -399,7 +589,7 @@ export default function DevoteeDetails() {
             </div>
             <div style={{ flex: 1, minWidth: 240 }}>
               <label className="pdx-lbl" htmlFor="dq">Search devotees</label>
-              <input id="dq" className="pdx-inp" style={{ width: '100%' }} value={q} maxLength={80} placeholder="Name, phone, email, city, state or devotee id" onChange={(e) => setQ(e.target.value)} />
+              <input id="dq" className="pdx-inp" style={{ width: '100%' }} value={q} maxLength={80} placeholder="Name, phone, email, city, state or devotee ID (SDSS00001)" onChange={(e) => setQ(e.target.value)} />
             </div>
             {filtered && <button type="button" className="pdx-btn" onClick={() => { setResidency(''); setState(''); setVerified(''); setPaid(''); setLogin(''); setQ(''); setQNow(''); setPage(1); }}>Clear filters</button>}
           </div>
@@ -430,7 +620,7 @@ export default function DevoteeDetails() {
                   <tbody>
                     {!loading && rows.length === 0 && <tr><td colSpan={8} className="pdx-empty">{filtered || from || to ? 'No devotees match these filters.' : 'No devotees yet.'}</td></tr>}
                     {rows.map((r) => {
-                      const isOpen = open === r.id;
+                      const isOpen = view?.id === r.id;
                       return (
                         <React.Fragment key={r.id}>
                           <tr className={isOpen ? 'open' : ''}>
@@ -439,7 +629,7 @@ export default function DevoteeDetails() {
                                 <Avatar d={r} />
                                 <div style={{ minWidth: 0 }}>
                                   <p style={{ fontWeight: 700 }}>{r.name || <span className="pdx-mut">No name</span>}</p>
-                                  <p className="pdx-sub">{r.residency === 'nri' ? 'NRI' : 'Indian resident'} · {r.login === 'google' ? 'Google' : 'Password'}</p>
+                                  <p className="pdx-sub">{r.code || r.id} · {r.residency === 'nri' ? 'NRI' : 'Indian resident'}</p>
                                 </div>
                               </div>
                             </td>
@@ -455,32 +645,48 @@ export default function DevoteeDetails() {
                               {r.pay_count > 0 && <p className="pdx-sub">{r.pay_count} payment{r.pay_count === 1 ? '' : 's'}</p>}
                             </td>
                             <td style={{ whiteSpace: 'nowrap' }}>{when(r.last_active)}</td>
-                            <td><button type="button" className="pdx-link" aria-expanded={isOpen} onClick={() => setOpen(isOpen ? null : r.id)}>{isOpen ? 'Hide' : 'Details'}</button></td>
+                            <td><button type="button" className="pdx-btn" aria-haspopup="dialog" onClick={(e) => { lastBtn.current = e.currentTarget; setView(r); }}>Details</button></td>
                           </tr>
-                          {isOpen && (
-                            <tr className="open">
-                              <td colSpan={8} style={{ paddingTop: 4 }}>
-                                <Panel id={r.id} onPick={(id) => { setQ(id); setQNow(id); setPage(1); setOpen(null); }} />
-                              </td>
-                            </tr>
-                          )}
                         </React.Fragment>
                       );
                     })}
                   </tbody>
                 </table>
               </div>
-              {pages > 1 && (
-                <div className="pdx-row" style={{ justifyContent: 'center', alignItems: 'center', marginTop: 12 }}>
+              {/* Always shown: the count, the pages, and how many rows to a page */}
+              <div className="pdx-row" style={{ justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
+                <span style={{ fontSize: 14 }}>{loading ? 'Loading...' : total === 0 ? 'Showing 0 devotees' : `Showing ${showFrom}-${showTo} of ${total} devotee${total === 1 ? '' : 's'}`}</span>
+                <div className="pdx-row" role="navigation" aria-label="Pages" style={{ alignItems: 'center' }}>
                   <button type="button" className="pdx-btn" disabled={page <= 1 || loading} onClick={() => setPage(page - 1)}>Previous</button>
-                  <span style={{ fontSize: 14 }}>Page {page} of {pages}</span>
+                  {pageList(page, pages).map((n, i) => n === '...'
+                    ? <span key={`gap${i}`} style={{ padding: '0 4px' }}>...</span>
+                    : <button key={n} type="button" className={`pdx-btn${n === page ? ' on' : ''}`} aria-current={n === page ? 'page' : undefined} disabled={loading} onClick={() => setPage(n)}>{n}</button>)}
                   <button type="button" className="pdx-btn" disabled={page >= pages || loading} onClick={() => setPage(page + 1)}>Next</button>
                 </div>
-              )}
+                <div className="pdx-row" style={{ alignItems: 'center' }}>
+                  <label className="pdx-lbl" htmlFor="dpg" style={{ margin: 0 }}>Go to page</label>
+                  <input id="dpg" className="pdx-inp" type="number" min={1} max={pages} style={{ width: 80 }} placeholder={String(page)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { const n = Math.min(pages, Math.max(1, Number((e.target as HTMLInputElement).value) || 1)); setPage(n); (e.target as HTMLInputElement).value = ''; } }} />
+                  <label className="pdx-lbl" htmlFor="dl2" style={{ margin: 0 }}>Rows per page</label>
+                  <select id="dl2" className="pdx-inp" value={limit} onChange={(e) => { setLimit(Number(e.target.value)); setPage(1); }}>
+                    {PAGE_SIZES.map((n) => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                </div>
+              </div>
             </section>
           </div>
         )}
       </div>
+      {view && (
+        <DevoteeModal d={view} index={viewIndex} count={rows.length} onClose={closeView}
+          onMove={(step) => { const n = rows[viewIndex + step]; if (n) setView(n); }}
+          onPick={(id) => { setQ(id); setQNow(id); setPage(1); setView(null); }}
+          onAddress={(id, v) => {
+            const next = (x: Devotee) => (x.id === id ? { ...x, comm_address: v || null } : x);
+            setOut((o) => (o ? { ...o, items: o.items.map(next) } : o));
+            setView((x) => (x ? next(x) : x));
+          }} />
+      )}
     </div>
   );
 }

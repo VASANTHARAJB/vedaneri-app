@@ -3,12 +3,12 @@ import { API, CSS, Notice, authHeader, failText, readJson, useFlash } from './Di
 import { DateRangePicker, PDX_CSS, inr, ymd } from './PaymentCharts';
 import { printHtml } from './sankalpaForm';
 
-// Printing Labels: corpus labels and subscription labels (75 x 38 mm stickers) and the A5 renewal notice.
+// Printing Labels: corpus labels, subscription labels and devotee address labels (75 x 38 mm stickers) and the A5 renewal notice.
 // Each can be printed one to a page (label printer / A5 sheet) or 12 to an A4 sticker sheet (2 across, 6 down).
-// The people come from the registers API: .../api/v1/registers/admin/labels/corpus and .../labels/subscription.
+// The people come from the registers API: .../api/v1/registers/admin/labels/corpus, .../labels/subscription and .../labels/devotees.
 const API_BASE = String(API).replace(/\/discover\/?$/, '');
 
-type Mode = 'corpus' | 'subscription' | 'renewal';
+type Mode = 'corpus' | 'subscription' | 'renewal' | 'devotees';
 type Layout = 'single' | 'sheet';
 type Row = {
   key: string; source: 'online' | 'manual'; devotee_id: string; name: string; phone: string; email: string; address: string[];
@@ -73,6 +73,10 @@ function subscriptionFace(r: Row): string {
 <div class="ct">${esc(r.phone)}${r.phone && r.email ? ' | ' : ''}${esc(r.email)}</div>
 <div class="cp">${esc(what)}</div>`;
 }
+// Devotee address label: only the name, the postal address and the contact number
+function devoteeFace(r: Row): string {
+  return `<div class="nm big">${esc(r.name || 'Devotee')}</div><div class="ad big">${addressBlock(r)}</div><div class="cp ph">${r.phone ? `Mobile: ${esc(r.phone)}` : '&nbsp;'}</div>`;
+}
 // The address label that goes on the envelope with an A5 notice
 function envelopeFace(r: Row): string {
   return `<div class="top"><b class="id">${esc(r.devotee_id)}</b></div><div class="nm big">${esc(r.name)}</div><div class="ad big">${addressBlock(r)}</div><div class="ct">${esc(r.phone)}</div>`;
@@ -97,6 +101,7 @@ body{margin:0;font-family:${FONT};color:#111;background:#fff}
 .lb .ct{font-size:7pt;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:.4mm}
 .lb .cp{position:absolute;left:3mm;right:3mm;bottom:1.6mm;font-size:6.6pt;font-weight:700;border-top:.2mm solid #999;padding-top:.3mm;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .lb .big.nm{font-size:10pt}.lb .big.ad{font-size:8.6pt;-webkit-line-clamp:5}
+.lb .cp.ph{font-size:8pt}
 .none{color:#888}
 .a5{width:148mm;height:210mm;padding:14mm 14mm 12mm;font-size:11.5pt;line-height:1.45;position:relative;overflow:hidden;page-break-after:always;break-after:page}
 .a5 .hd{text-align:center;font-weight:700;font-size:15pt;color:#7a1c1c;border-bottom:.5mm solid #e2552b;padding-bottom:3mm}
@@ -106,7 +111,7 @@ body{margin:0;font-family:${FONT};color:#111;background:#fff}
 `;
 
 function sheetHtml(mode: Mode, layout: Layout, rows: Row[], sheet: Sheet, notice: Notice5, screen: boolean): string {
-  const face = mode === 'corpus' ? corpusFace : mode === 'subscription' ? subscriptionFace : envelopeFace;
+  const face = mode === 'corpus' ? corpusFace : mode === 'subscription' ? subscriptionFace : mode === 'devotees' ? devoteeFace : envelopeFace;
   const cell = (r: Row | null) => `<div class="lb">${r ? face(r) : ''}</div>`;
   let body = '', page = '@page{margin:0;size:75mm 38mm}';
   if (mode === 'renewal' && layout === 'single') {
@@ -177,6 +182,7 @@ export default function PrintingLabels() {
   const [membership, setMembership] = useState('');
   const [status, setStatus] = useState('PAID');
   const [source, setSource] = useState('');
+  const [withAddr, setWithAddr] = useState('');
   const [q, setQ] = useState('');
   const [data, setData] = useState<Result | null>(null);
   const [off, setOff] = useState<Set<string>>(new Set());
@@ -192,6 +198,7 @@ export default function PrintingLabels() {
   const pick = (m: Mode) => {
     setMode(m); setData(null); setOff(new Set());
     if (m === 'renewal') { const r = rangeFor('next30'); setBasis('end'); setFrom(r.from); setTo(r.to); setPreset('next30'); setMembership('ACTIVE'); }
+    else if (m === 'devotees') { const r = rangeFor('all'); setBasis('paid'); setFrom(r.from); setTo(r.to); setPreset('all'); setMembership(''); }
     else { const r = rangeFor('month'); setBasis('paid'); setFrom(r.from); setTo(r.to); setPreset('month'); setMembership(''); }
   };
   const choose = (id: string) => { const r = rangeFor(id); setPreset(id); setFrom(r.from); setTo(r.to); };
@@ -203,11 +210,12 @@ export default function PrintingLabels() {
       const p = new URLSearchParams();
       if (from) p.set('from', from);
       if (to) p.set('to', to);
-      if (status) p.set('status', status);
+      if (mode !== 'devotees' && status) p.set('status', status);
       if (q.trim()) p.set('q', q.trim());
+      if (mode === 'devotees' && withAddr) p.set('address', withAddr);
       if (mode === 'corpus' && source) p.set('source', source);
-      if (mode !== 'corpus') { p.set('basis', basis); if (membership) p.set('membership', membership); }
-      const res = await fetch(`${API_BASE}/registers/admin/labels/${mode === 'corpus' ? 'corpus' : 'subscription'}?${p}`, { headers: authHeader(), cache: 'no-store' });
+      if (mode === 'subscription' || mode === 'renewal') { p.set('basis', basis); if (membership) p.set('membership', membership); }
+      const res = await fetch(`${API_BASE}/registers/admin/labels/${mode === 'corpus' ? 'corpus' : mode === 'devotees' ? 'devotees' : 'subscription'}?${p}`, { headers: authHeader(), cache: 'no-store' });
       const j = await readJson(res);
       if (mine !== seq.current) return;
       if (!res.ok) throw new Error(failText(j, `Could not load the people (${res.status}).`));
@@ -215,7 +223,7 @@ export default function PrintingLabels() {
     } catch (e: any) {
       if (mine === seq.current) { setErr(e?.message || 'Could not load the people.'); setData(null); }
     } finally { if (mine === seq.current) setLoading(false); }
-  }, [mode, from, to, status, q, source, basis, membership]);
+  }, [mode, from, to, status, q, source, basis, membership, withAddr]);
 
   useEffect(() => { const t = setTimeout(load, q ? 350 : 0); return () => clearTimeout(t); }, [load, q]);
 
@@ -235,12 +243,15 @@ export default function PrintingLabels() {
     ['corpus', 'Corpus labels', '75 x 38 mm sticker'],
     ['subscription', 'Subscription labels', '75 x 38 mm sticker'],
     ['renewal', 'Renewal notice', 'A5 page, or the 12-up address labels'],
+    ['devotees', 'Devotee address', 'Name, address and mobile, 75 x 38 mm'],
   ];
-  const presets: [string, string][] = mode === 'renewal'
+  const presets: [string, string][] = mode === 'devotees'
+    ? [['all', 'All devotees'], ['today', 'Joined today'], ['month', 'Joined this month'], ['last30', 'Last 30 days'], ['year', 'Joined this year']]
+    : mode === 'renewal'
     ? [['today', 'Today'], ['next30', 'Next 30 days'], ['month', 'This month'], ['year', 'This year'], ['all', 'All time']]
     : [['today', 'Today'], ['month', 'This month'], ['last30', 'Last 30 days'], ['year', 'This year'], ['all', 'All time']];
-  const single = mode === 'renewal' ? ['One A5 notice per page', 'Each person gets one A5 notice'] : ['One label per sticker', 'For a label printer or a roll: 75 x 38 mm pages'];
-  const multi = mode === 'renewal' ? ['12 address labels per A4 sheet', 'The envelope labels for the notices'] : ['12 labels per A4 sheet', '2 across x 6 down'];
+  const single = mode === 'devotees' ? ['One label per sticker', 'For a label printer or a roll: 75 x 38 mm pages'] : mode === 'renewal' ? ['One A5 notice per page', 'Each person gets one A5 notice'] : ['One label per sticker', 'For a label printer or a roll: 75 x 38 mm pages'];
+  const multi = mode === 'devotees' ? ['12 labels per A4 sheet', '2 across x 6 down'] : mode === 'renewal' ? ['12 address labels per A4 sheet', 'The envelope labels for the notices'] : ['12 labels per A4 sheet', '2 across x 6 down'];
   const setS = (k: keyof Sheet, v: string, min: number, max: number) => setSheet((s) => ({ ...s, [k]: num(v, s[k], min, max) }));
 
   return (
@@ -253,7 +264,7 @@ export default function PrintingLabels() {
         <div className="pdx-top">
           <div>
             <h1 className="pdx-title">Printing Labels</h1>
-            <p className="pdx-sub" style={{ fontSize: 14, maxWidth: 760 }}>Choose the dates, tick the people, and print. Corpus and subscription labels are 75 x 38 mm; the renewal notice is A5.</p>
+            <p className="pdx-sub" style={{ fontSize: 14, maxWidth: 760 }}>Choose the dates, tick the people, and print. Corpus, subscription and devotee address labels are 75 x 38 mm; the renewal notice is A5.</p>
           </div>
           <div className="pdx-row">
             <button type="button" className="pdx-btn on" onClick={print} disabled={loading || !chosen.length}>Print {chosen.length ? `${chosen.length} ${mode === 'renewal' && layout === 'single' ? 'notice' : 'label'}${chosen.length === 1 ? '' : 's'}` : ''}</button>
@@ -271,10 +282,10 @@ export default function PrintingLabels() {
             <div className="pdx-presets" role="group" aria-label="Period">
               {presets.map(([id, l]) => <button key={id} type="button" aria-pressed={preset === id} onClick={() => choose(id)}>{l}</button>)}
             </div>
-            <DateRangePicker from={from} to={to} label="Dates" onChange={(f, t) => { setFrom(f); setTo(t); setPreset(f || t ? 'custom' : 'all'); }} />
+            <DateRangePicker from={from} to={to} label={mode === 'devotees' ? 'Joined between' : 'Dates'} onChange={(f, t) => { setFrom(f); setTo(t); setPreset(f || t ? 'custom' : 'all'); }} />
           </div>
           <div className="pl-grid">
-            {mode !== 'corpus' && (
+            {(mode === 'subscription' || mode === 'renewal') && (
               <div>
                 <label className="pdx-lbl" htmlFor="pl-basis">Dates mean</label>
                 <select id="pl-basis" className="pdx-inp" value={basis} onChange={(e) => setBasis(e.target.value as 'paid' | 'end')}>
@@ -282,7 +293,7 @@ export default function PrintingLabels() {
                 </select>
               </div>
             )}
-            {mode !== 'corpus' && (
+            {(mode === 'subscription' || mode === 'renewal') && (
               <div>
                 <label className="pdx-lbl" htmlFor="pl-mem">Membership</label>
                 <select id="pl-mem" className="pdx-inp" value={membership} onChange={(e) => setMembership(e.target.value)}>
@@ -298,12 +309,22 @@ export default function PrintingLabels() {
                 </select>
               </div>
             )}
-            <div>
-              <label className="pdx-lbl" htmlFor="pl-st">Payment</label>
-              <select id="pl-st" className="pdx-inp" value={status} onChange={(e) => setStatus(e.target.value)}>
-                <option value="PAID">Paid</option><option value="">All</option><option value="PENDING">Pending</option>
-              </select>
-            </div>
+            {mode !== 'devotees' && (
+              <div>
+                <label className="pdx-lbl" htmlFor="pl-st">Payment</label>
+                <select id="pl-st" className="pdx-inp" value={status} onChange={(e) => setStatus(e.target.value)}>
+                  <option value="PAID">Paid</option><option value="">All</option><option value="PENDING">Pending</option>
+                </select>
+              </div>
+            )}
+            {mode === 'devotees' && (
+              <div>
+                <label className="pdx-lbl" htmlFor="pl-ad">Address</label>
+                <select id="pl-ad" className="pdx-inp" value={withAddr} onChange={(e) => setWithAddr(e.target.value)}>
+                  <option value="">All devotees</option><option value="with">Only those with an address</option><option value="without">Only those without an address</option>
+                </select>
+              </div>
+            )}
             <div>
               <label className="pdx-lbl" htmlFor="pl-q">Search</label>
               <input id="pl-q" className="pdx-inp" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Name, mobile, ID, city" autoComplete="off" />
@@ -313,7 +334,7 @@ export default function PrintingLabels() {
 
         {err && <div className="pdx-card" style={{ borderColor: '#fecaca', background: '#fef2f2', color: '#991b1b', marginBottom: 14 }}>{err} <button type="button" className="pdx-btn" onClick={load}>Try again</button></div>}
         {data?.warning && <div className="pdx-card" style={{ background: '#fffbeb', borderColor: '#fde68a', marginBottom: 14, fontSize: 13 }}>{data.warning}</div>}
-        {data?.capped && <div className="pdx-card" style={{ background: '#fffbeb', borderColor: '#fde68a', marginBottom: 14, fontSize: 13 }}>Only the first {data.limit} people are shown. Narrow the dates to print the rest.</div>}
+        {data?.capped && <div className="pdx-card" style={{ background: '#fffbeb', borderColor: '#fde68a', marginBottom: 14, fontSize: 13 }}>Only the first {data.limit} people are shown. {mode === 'devotees' ? 'Use the joined dates or the search to print the rest.' : 'Narrow the dates to print the rest.'}</div>}
 
         <div className="pl-two">
           <div className="pdx-card">
@@ -327,18 +348,18 @@ export default function PrintingLabels() {
             {noAddress > 0 && <p className="pl-small" style={{ margin: '0 0 8px', color: '#b45309' }}>{noAddress} selected {noAddress === 1 ? 'person has' : 'people have'} no address on record; the label will say so.</p>}
             <div className="pl-list">
               <table>
-                <thead><tr><th style={{ width: 28 }} /><th>ID</th><th>Name</th><th>{mode === 'corpus' ? 'Corpus' : 'Subscription'}</th><th>Address</th></tr></thead>
+                <thead><tr><th style={{ width: 28 }} /><th>ID</th><th>Name</th><th>{mode === 'corpus' ? 'Corpus' : mode === 'devotees' ? 'Contact' : 'Subscription'}</th><th>Address</th></tr></thead>
                 <tbody>
                   {items.map((r) => (
                     <tr key={r.key} className={off.has(r.key) ? 'off' : ''}>
                       <td><input type="checkbox" checked={!off.has(r.key)} onChange={() => toggle(r.key)} aria-label={`Print for ${r.name}`} /></td>
                       <td>{r.devotee_id}</td>
                       <td>{r.name}{r.source === 'manual' && <span className="pl-pill">On-site</span>}<div className="pl-small">{r.phone}</div></td>
-                      <td>{mode === 'corpus' ? <>{r.item}<div className="pl-small">{r.amount ? inr(r.amount) : ''} {r.date && `| ${dmy(r.date)}`}</div></> : <>{r.membership}<div className="pl-small">{dmy(r.valid_from)} to {dmy(r.valid_to)}</div></>}</td>
+                      <td>{mode === 'devotees' ? <>{r.phone || '-'}<div className="pl-small">{r.email}</div></> : mode === 'corpus' ? <>{r.item}<div className="pl-small">{r.amount ? inr(r.amount) : ''} {r.date && `| ${dmy(r.date)}`}</div></> : <>{r.membership}<div className="pl-small">{dmy(r.valid_from)} to {dmy(r.valid_to)}</div></>}</td>
                       <td className="pl-small">{r.address.join(', ') || '-'}</td>
                     </tr>
                   ))}
-                  {!loading && !items.length && !err && <tr><td colSpan={5} style={{ padding: 22, textAlign: 'center', color: '#6b7280' }}>No one found for these dates. Try a wider period or set Payment to All.</td></tr>}
+                  {!loading && !items.length && !err && <tr><td colSpan={5} style={{ padding: 22, textAlign: 'center', color: '#6b7280' }}>{mode === 'devotees' ? 'No devotees found. Try All devotees, or clear the search.' : 'No one found for these dates. Try a wider period or set Payment to All.'}</td></tr>}
                 </tbody>
               </table>
             </div>

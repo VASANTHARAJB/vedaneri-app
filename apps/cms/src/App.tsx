@@ -26,12 +26,17 @@ import PaymentsDashboard from './pages/PaymentsDashboard';
 import SevaPayments from './pages/SevaPayments';
 import DonationPayments from './pages/DonationPayments';
 import MagazinePayments from './pages/MagazinePayments';
+import CampPayments from './pages/CampPayments';
 import DevoteeDetails from './pages/DevoteeDetails';
 import DevoteeRecords from './pages/DevoteeRecords';
 import SevaRegister from './pages/SevaRegister';
+import SevaOffline from './pages/SevaOffline';
 import DonationRegister from './pages/DonationRegister';
+import DonationOffline from './pages/DonationOffline';
 import MagazineRegister from './pages/MagazineRegister';
+import MagazineOffline from './pages/MagazineOffline';
 import CampRegister from './pages/CampRegister';
+import CampOffline from './pages/CampOffline';
 import PrintingLabels from './pages/PrintingLabels';
 import PosDashboard from './pages/PosDashboard';
 import PosNewSale from './pages/PosNewSale';
@@ -43,6 +48,17 @@ import PosSuppliers from './pages/PosSuppliers';
 import PosAdjustments from './pages/PosAdjustments';
 import PosReports from './pages/PosReports';
 import UsersManagement from './pages/UsersManagement';
+import GmDashboard from './pages/GmDashboard';
+import AdminDashboard from './pages/AdminDashboard';
+import DeveloperDashboard from './pages/DeveloperDashboard';
+
+// Shown to a login that has no page ticked yet
+const NoAccess = () => (
+  <div style={{ padding: 24, maxWidth: 520 }}>
+    <h1 style={{ fontSize: 20, fontWeight: 800 }}>No pages are open for this login yet</h1>
+    <p style={{ marginTop: 8, color: '#6b7280' }}>A super admin has to tick the pages this login may open on the Users page. Please ask them, then sign in again.</p>
+  </div>
+);
 
 // Shown until the editor for that page is built
 const Soon = ({ name }: { name: string }) => (
@@ -63,6 +79,10 @@ export default function App() {
           <Route path="/" element={<AdminLayout />}>
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="dashboard" element={<DashboardOverview />} />
+            <Route path="dashboard-gm" element={<GmDashboard />} />
+            <Route path="dashboard-admin" element={<AdminDashboard />} />
+            <Route path="dashboard-developer" element={<DeveloperDashboard />} />
+            <Route path="no-access" element={<NoAccess />} />
             <Route path="content-stats" element={<ContentStats />} />
             <Route path="sevas" element={<SevasManagement />} />
             <Route path="panchangam-calendar" element={<PanchangamCalendar />} />
@@ -84,12 +104,17 @@ export default function App() {
             <Route path="seva-payments" element={<SevaPayments />} />
             <Route path="payment-donations" element={<DonationPayments />} />
             <Route path="payment-magazine" element={<MagazinePayments />} />
+            <Route path="payment-camps" element={<CampPayments />} />
             <Route path="devotees" element={<DevoteeDetails />} />
             <Route path="devotee-records" element={<DevoteeRecords />} />
             <Route path="seva-register" element={<SevaRegister />} />
             <Route path="donation-register" element={<DonationRegister />} />
             <Route path="magazine-register" element={<MagazineRegister />} />
             <Route path="camp-register" element={<CampRegister />} />
+            <Route path="seva-offline" element={<SevaOffline />} />
+            <Route path="donation-offline" element={<DonationOffline />} />
+            <Route path="magazine-offline" element={<MagazineOffline />} />
+            <Route path="camp-offline" element={<CampOffline />} />
             <Route path="pos" element={<PosDashboard />} />
             <Route path="pos-new-sale" element={<PosNewSale />} />
             <Route path="pos-sales" element={<PosSales />} />

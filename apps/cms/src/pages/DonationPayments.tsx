@@ -2,10 +2,25 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { API, CSS, Notice, authHeader, failText, readJson, useFlash } from './DiscoverKit';
 import { ActivityDots, Columns, Delta, Donut, HBars, LineChart, PDX_CSS, RevenueChart, inr, makeBuckets, rangeOf, short, when, ymd } from './PaymentCharts';
 import type { DailyRow, Gran, Money, Preset } from './PaymentCharts';
+import { useAuth } from '../lib/auth';
+import { loadLogo, pageList } from './reportKit';
+import { buildDonationReportXlsx } from './donationReportXlsx';
+import logoVspt from '@images/logo-vspt.png';
+import logoSdss from '@images/logo-sdss.png';
 
 // API points at .../api/v1/discover. The Donation payments API is .../api/v1/payments/admin/donation
 const API_BASE = String(API).replace(/\/discover\/?$/, '');
 const DON = `${API_BASE}/payments/admin/donation`;
+
+// The name and address printed at the top of the downloaded report (the two logos come from apps/web/public/images)
+const ORG_NAME = 'SRI DAKSHINAMURTI SEVA SAMITI';
+const ORG_ADDRESS: string[] = [
+  'Chatrapatti Road, Vedapuri, Theni, Tamilnadu, India - 625 531',
+  'Phone: 97517 51910, 94430 51910',
+];
+const EXPORT_LIMIT = 20000; // the most rows the server sends in one download
+const PAGE_SIZES = [10, 25, 50, 100];
+const ddmmyyyy = (d: string) => (/^\d{4}-\d{2}-\d{2}$/.test(d) ? `${d.slice(8, 10)}${d.slice(5, 7)}${d.slice(0, 4)}` : '');
 
 type Cat = { category: string; paid: Money; pending: Money; failed: Money };
 type Summary = {
@@ -91,9 +106,12 @@ function Stat({ label, value, sub, color }: { label: string; value: string; sub?
 
 export default function DonationPayments() {
   const { notice, flash, clear } = useFlash();
-  const [preset, setPreset] = useState<Preset>('30');
-  const [from, setFrom] = useState(rangeOf('30').from);
-  const [to, setTo] = useState(rangeOf('30').to);
+  const auth = useAuth() as any;
+  // The page opens on the current month
+  const [preset, setPreset] = useState<Preset>('month');
+  const [from, setFrom] = useState(rangeOf('month').from);
+  const [to, setTo] = useState(rangeOf('month').to);
+  // Category, status, fund, sort and search filter the payments table (and the download). The charts follow the period only.
   const [category, setCategory] = useState('');
   const [status, setStatus] = useState('');
   const [fund, setFund] = useState('');
@@ -106,12 +124,15 @@ export default function DonationPayments() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
   const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState('');
+  const [limit, setLimit] = useState(25);
+  const [loadingSum, setLoadingSum] = useState(true);
+  const [loadingList, setLoadingList] = useState(true);
+  const [errSum, setErrSum] = useState('');
+  const [errList, setErrList] = useState('');
   const [open, setOpen] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
-  const LIMIT = 25;
-  const seq = useRef(0);
+  const seqSum = useRef(0);
+  const seqList = useRef(0);
   const tableRef = useRef<HTMLElement>(null);
 
   // The search box waits a moment after typing before it asks the server
@@ -120,37 +141,62 @@ export default function DonationPayments() {
     return () => clearTimeout(t);
   }, [q]);
 
-  const qs = useCallback((withText: boolean) => {
+  const period = useCallback(() => {
     const p = new URLSearchParams();
     if (from) p.set('from', from);
     if (to) p.set('to', to);
+    return p;
+  }, [from, to]);
+
+  const tableParams = useCallback(() => {
+    const p = period();
     if (category) p.set('category', category);
     if (status) p.set('status', status);
     if (fund) p.set('fund', fund);
-    if (withText && qNow) p.set('q', qNow);
+    if (qNow) p.set('q', qNow);
     return p;
-  }, [from, to, category, status, fund, qNow]);
+  }, [period, category, status, fund, qNow]);
 
-  const load = useCallback(async () => {
-    const mine = ++seq.current;
-    setLoading(true); setErr('');
+  // Figures and charts: the dates only
+  const loadSummary = useCallback(async () => {
+    const mine = ++seqSum.current;
+    setLoadingSum(true); setErrSum('');
     try {
-      const sp = qs(true); // the figures and charts follow the dates, the filters and the search words
-      const lp = qs(true); lp.set('page', String(page)); lp.set('limit', String(LIMIT)); lp.set('sort', sort);
-      const [a, b] = await Promise.all([
-        fetch(`${DON}/summary?${sp}`, { headers: authHeader(), cache: 'no-store' }),
-        fetch(`${DON}/list?${lp}`, { headers: authHeader(), cache: 'no-store' }),
-      ]);
-      const [da, db] = await Promise.all([readJson(a), readJson(b)]);
-      if (!a.ok) throw new Error(failText(da, `Could not load the summary (${a.status}).`));
-      if (!b.ok) throw new Error(failText(db, `Could not load the payments (${b.status}).`));
-      if (mine !== seq.current) return; // a newer request has started
-      setSummary(da); setRows(db.items || []); setTotal(db.total || 0);
+      const res = await fetch(`${DON}/summary?${period()}`, { headers: authHeader(), cache: 'no-store' });
+      const d = await readJson(res);
+      if (!res.ok) throw new Error(failText(d, `Could not load the summary (${res.status}).`));
+      if (mine !== seqSum.current) return; // a newer request has started
+      setSummary(d);
     } catch (e: any) {
-      if (mine === seq.current) setErr(`${e?.message || 'Could not load the donation payments.'} [${DON}]`);
-    } finally { if (mine === seq.current) setLoading(false); }
-  }, [qs, page, sort]);
-  useEffect(() => { load(); }, [load]);
+      if (mine === seqSum.current) setErrSum(`${e?.message || 'Could not load the donation payments.'} [${DON}]`);
+    } finally { if (mine === seqSum.current) setLoadingSum(false); }
+  }, [period]);
+
+  // The payments table: the dates plus the category, status, fund, sort and search
+  const loadList = useCallback(async () => {
+    const mine = ++seqList.current;
+    setLoadingList(true); setErrList('');
+    try {
+      const lp = tableParams(); lp.set('page', String(page)); lp.set('limit', String(limit)); lp.set('sort', sort);
+      const res = await fetch(`${DON}/list?${lp}`, { headers: authHeader(), cache: 'no-store' });
+      const d = await readJson(res);
+      if (!res.ok) throw new Error(failText(d, `Could not load the payments (${res.status}).`));
+      if (mine !== seqList.current) return;
+      setRows(d.items || []); setTotal(d.total || 0);
+    } catch (e: any) {
+      if (mine === seqList.current) setErrList(`${e?.message || 'Could not load the donation payments.'} [${DON}]`);
+    } finally { if (mine === seqList.current) setLoadingList(false); }
+  }, [tableParams, page, limit, sort]);
+
+  useEffect(() => { loadSummary(); }, [loadSummary]);
+  useEffect(() => { loadList(); }, [loadList]);
+
+  const err = errSum || errList;
+  const loading = loadingSum || loadingList;
+  const retry = () => { loadSummary(); loadList(); };
+
+  // Takes the person to the payments table (after a filter was set from a card above)
+  const goToTable = () => setTimeout(() => tableRef.current?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }), 50);
 
   function choose(p: Preset) {
     setPreset(p); setPage(1);
@@ -158,22 +204,45 @@ export default function DonationPayments() {
     setGran(p === 'year' || p === 'all' ? 'month' : 'day');
   }
 
+  // One Excel file with everything: a Summary sheet and a sheet listing every donation that matches the filters (not only this page)
   async function download() {
     setBusy(true);
     try {
-      const p = qs(true); p.set('sort', sort);
-      const res = await fetch(`${DON}/export?${p}`, { headers: authHeader() });
-      if (!res.ok) { flash('err', failText(await readJson(res), 'Could not make the file.')); return; }
-      const url = URL.createObjectURL(await res.blob());
+      const sp = tableParams(); sp.set('sort', sort);
+      const [sumRes, csvRes, left, right] = await Promise.all([
+        fetch(`${DON}/summary?${period()}`, { headers: authHeader(), cache: 'no-store' }).then(async (r) => {
+          const d = await readJson(r);
+          if (!r.ok) throw new Error(failText(d, 'Could not make the report.'));
+          return d as Summary;
+        }),
+        fetch(`${DON}/export?${sp}`, { headers: authHeader(), cache: 'no-store' }).then(async (r) => {
+          if (!r.ok) throw new Error(failText(await readJson(r), 'Could not make the report.'));
+          return r.text();
+        }),
+        loadLogo(logoVspt),
+        loadLogo(logoSdss),
+      ]);
+      const bits = [category ? catLabel(category) : 'All categories', status ? STATUS_LABEL[status] || status : 'All statuses', fund ? `Fund: ${fund}` : 'All funds'];
+      if (qNow) bits.push(`Search: "${qNow}"`);
+      const bytes = await buildDonationReportXlsx({
+        org: { name: ORG_NAME, address: ORG_ADDRESS },
+        from, to, generatedAt: new Date(), generatedBy: String(auth?.user?.email || auth?.user?.full_name || ''),
+        filtersText: bits.join(', '), summary: sumRes as any, paymentsCsv: csvRes, exportLimit: EXPORT_LIMIT,
+        catLabel, logos: { left, right },
+      });
+      const url = URL.createObjectURL(new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
       const a = document.createElement('a');
-      a.href = url; a.download = `donation-payments-${ymd(new Date())}.csv`;
+      const span = from || to ? `-${ddmmyyyy(from) || 'start'}-to-${ddmmyyyy(to) || ddmmyyyy(ymd(new Date()))}` : '-all';
+      a.href = url; a.download = `Donation-payments-report${span}.xlsx`;
       document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 2000);
-    } catch { flash('err', 'Network error. Please try again.'); } finally { setBusy(false); }
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+    } catch (e: any) { flash('err', e?.message || 'Could not make the report.'); } finally { setBusy(false); }
   }
 
   const periodText = from || to ? `${from ? dateLabel(from) : 'the start'} to ${to ? dateLabel(to) : 'today'}` : 'all dates';
-  const pages = Math.max(1, Math.ceil(total / LIMIT));
+  const pages = Math.max(1, Math.ceil(total / limit));
+  const showFrom = total === 0 ? 0 : (page - 1) * limit + 1;
+  const showTo = Math.min(total, page * limit);
   const filtered = !!(category || status || fund || qNow);
   const buckets = summary ? makeBuckets(summary.daily, gran, from, to) : [];
   const catList = summary?.categoryList || [];
@@ -200,10 +269,10 @@ export default function DonationPayments() {
             <h1 className="pdx-title">Donation payments</h1>
             <p className="pdx-sub" style={{ fontSize: 14 }}>Every donation and corpus gift with the donor, the Razorpay ids and the names written. Money is counted only when a payment is paid.</p>
           </div>
-          <button type="button" className="pdx-btn" onClick={download} disabled={busy || loading || total === 0}>{busy ? 'Preparing...' : 'Download CSV'}</button>
+          <button type="button" className="pdx-btn" onClick={download} disabled={busy || loading || total === 0}>{busy ? 'Preparing the report...' : 'Download report (Excel)'}</button>
         </div>
 
-        {/* Filters */}
+        {/* Period */}
         <div className="pdx-card" style={{ marginBottom: 14 }}>
           <div className="pdx-row" style={{ marginBottom: 12 }} role="group" aria-label="Payment date">
             {([['month', 'This month'], ['30', 'Last 30 days'], ['year', 'This year'], ['all', 'All time'], ['custom', 'Choose dates']] as [Preset, string][]).map(([id, label]) => (
@@ -213,45 +282,14 @@ export default function DonationPayments() {
           <div className="pdx-row">
             <div><label className="pdx-lbl" htmlFor="sf">From</label><input id="sf" className="pdx-inp" type="date" value={from} max={to || undefined} onChange={(e) => { setFrom(e.target.value); setPreset('custom'); setPage(1); }} /></div>
             <div><label className="pdx-lbl" htmlFor="st">To</label><input id="st" className="pdx-inp" type="date" value={to} min={from || undefined} onChange={(e) => { setTo(e.target.value); setPreset('custom'); setPage(1); }} /></div>
-            <div>
-              <label className="pdx-lbl" htmlFor="sc">Category</label>
-              <select id="sc" className="pdx-inp" value={category} onChange={(e) => { setCategory(e.target.value); setPage(1); }}>
-                <option value="">All categories</option>
-                {catList.map((c) => <option key={c} value={c}>{catLabel(c)}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="pdx-lbl" htmlFor="ss">Status</label>
-              <select id="ss" className="pdx-inp" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
-                <option value="">All statuses</option>
-                {Object.entries(STATUS_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-              </select>
-            </div>
-            <div style={{ minWidth: 0, maxWidth: 260 }}>
-              <label className="pdx-lbl" htmlFor="sv">Fund</label>
-              <select id="sv" className="pdx-inp" style={{ width: '100%' }} value={fund} onChange={(e) => { setFund(e.target.value); setPage(1); }}>
-                <option value="">All funds</option>
-                {(summary?.funds || []).filter((x) => !category || x.category === category).map((x) => <option key={x.fund} value={x.fund}>{x.fund}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="pdx-lbl" htmlFor="so">Sort by</label>
-              <select id="so" className="pdx-inp" value={sort} onChange={(e) => { setSort(e.target.value); setPage(1); }}>
-                {SORTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-              </select>
-            </div>
-            <div style={{ flex: 1, minWidth: 240 }}>
-              <label className="pdx-lbl" htmlFor="sq">Search donors and payments</label>
-              <input id="sq" className="pdx-inp" style={{ width: '100%' }} value={q} maxLength={80} placeholder="Donor name, phone, email, receipt, Razorpay id or fund" onChange={(e) => setQ(e.target.value)} />
-            </div>
-            {filtered && <button type="button" className="pdx-btn" onClick={() => { setCategory(''); setStatus(''); setFund(''); setQ(''); setQNow(''); setPage(1); }}>Clear filters</button>}
           </div>
         </div>
 
         {err ? (
-          <div role="alert" className="pdx-err">{err} <button type="button" className="pdx-link" onClick={load}>Try again</button></div>
+          <div role="alert" className="pdx-err">{err} <button type="button" className="pdx-link" onClick={retry}>Try again</button></div>
         ) : (
-          <div className={loading && summary ? 'pdx-busy' : ''} aria-busy={loading}>
+          <div>
+            <div className={loadingSum && summary ? 'pdx-busy' : ''} aria-busy={loadingSum}>
             <Group title="Summary" note={`Money counted only when a payment is paid. Period: ${periodText}.`} />
             <div className="pdx-grid pdx-g-kpi">
               <div className="pdx-card pdx-hero">
@@ -275,16 +313,15 @@ export default function DonationPayments() {
               <section className="pdx-card" aria-label="Revenue flow">
                 <div className="pdx-head">
                   <div><h3>Revenue flow</h3><p className="pdx-sub">Money collected by category</p></div>
-                  <div className="pdx-row">
-                    <div className="pdx-row" role="group" aria-label="Group by">
-                      {(['day', 'week', 'month'] as Gran[]).map((g) => <button key={g} type="button" className={`pdx-btn${gran === g ? ' on' : ''}`} aria-pressed={gran === g} onClick={() => setGran(g)}>{g === 'day' ? 'Daily' : g === 'week' ? 'Weekly' : 'Monthly'}</button>)}
-                    </div>
-                    <div className="pdx-row" role="group" aria-label="Chart style">
-                      {(['bars', 'area'] as const).map((m) => <button key={m} type="button" className={`pdx-btn${mode === m ? ' on' : ''}`} aria-pressed={mode === m} onClick={() => setMode(m)}>{m === 'bars' ? 'Bars' : 'Line'}</button>)}
-                    </div>
+                  <div className="pdx-row" role="group" aria-label="Group by">
+                    {(['day', 'week', 'month'] as Gran[]).map((g) => <button key={g} type="button" className={`pdx-btn${gran === g ? ' on' : ''}`} aria-pressed={gran === g} onClick={() => setGran(g)}>{g === 'day' ? 'Daily' : g === 'week' ? 'Weekly' : 'Monthly'}</button>)}
                   </div>
                 </div>
                 <RevenueChart data={buckets} mode={mode} series={SERIES} />
+                {/* Bars / Line sit below the graph */}
+                <div className="pdx-row" style={{ justifyContent: 'center', marginTop: 12 }} role="group" aria-label="Chart style">
+                  {(['bars', 'area'] as const).map((m) => <button key={m} type="button" className={`pdx-btn${mode === m ? ' on' : ''}`} aria-pressed={mode === m} onClick={() => setMode(m)}>{m === 'bars' ? 'Bars' : 'Line'}</button>)}
+                </div>
                 {mode === 'bars' ? <div className="pdx-key">{SERIES.map((s) => <span key={s.key}><i style={{ background: s.color }} />{s.label}</span>)}</div> : <div className="pdx-key">The line shows all categories together. Hover a point for the split.</div>}
               </section>
               <div style={{ display: 'grid', gap: 14, alignContent: 'start' }}>
@@ -293,8 +330,8 @@ export default function DonationPayments() {
                   <p className="pdx-sub" style={{ marginBottom: 10 }}>Share of the money collected</p>
                   <Donut parts={catParts} centerTop="Total" centerBottom={summary ? short(summary.paid.amount) : '...'} label="Money collected by category" />
                 </section>
-                <section className="pdx-card" aria-label="Payment health">
-                  <h3>Payment health</h3>
+                <section className="pdx-card" aria-label="Health">
+                  <h3>Health</h3>
                   <p className="pdx-sub" style={{ marginBottom: 10 }}>How many attempts ended well</p>
                   <Donut parts={healthParts} centerTop="Success" centerBottom={summary ? `${summary.successRate}%` : '...'} label="Share of paid, pending and failed bookings" />
                   {summary && <p className="pdx-sub" style={{ marginTop: 10 }}>{repeatPct}% of donors gave more than once ({summary.repeatDonors} of {summary.payers}).</p>}
@@ -346,10 +383,6 @@ export default function DonationPayments() {
                             <div className="pdx-bar" role="img" aria-label={`${rate}% of attempts were paid`}><div style={{ width: `${rate}%`, background: rate >= 70 ? STATUS_COLOR.PAID : rate >= 40 ? STATUS_COLOR.PENDING : STATUS_COLOR.FAILED }} /></div>
                             <p className="pdx-sub">{rate}%</p>
                           </td>
-                          <td><button type="button" className="pdx-link" onClick={() => {
-                            setFund(t.fund); setCategory(t.category); setPage(1);
-                            setTimeout(() => tableRef.current?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }), 50);
-                          }}>View</button></td>
                         </tr>
                       );
                     })}
@@ -372,7 +405,7 @@ export default function DonationPayments() {
                     <span className="pdx-ava" aria-hidden="true">{(d.name || '?').trim().charAt(0).toUpperCase()}</span>
                     <div style={{ minWidth: 0, flex: 1 }}>
                       <button type="button" className="pdx-link" style={{ textDecoration: 'none', color: 'inherit', fontWeight: 700, padding: 0, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' }}
-                        onClick={() => { setQ(d.devotee_id); setQNow(d.devotee_id); setPage(1); }}>{d.name || d.devotee_id}</button>
+                        onClick={() => { setQ(d.devotee_id); setQNow(d.devotee_id); setPage(1); goToTable(); }}>{d.name || d.devotee_id}</button>
                       <p className="pdx-sub">{d.count} donation{d.count === 1 ? '' : 's'}{d.phone ? ` · ${d.phone}` : ''}</p>
                     </div>
                     <b>{inr(d.amount)}</b>
@@ -430,12 +463,48 @@ export default function DonationPayments() {
               </div>
             </div>
 
-            {/* The payments */}
+            </div>
+
+            {/* The payments, with their own filters */}
             <Group title="All payments" />
             <section ref={tableRef} className="pdx-card" aria-label="Donation payments" style={{ marginBottom: 4, scrollMarginTop: 12 }}>
               <div className="pdx-head">
                 <h3>Payments</h3>
-                <span className="pdx-sub">{loading ? 'Loading...' : `${total} found`}</span>
+                <span className="pdx-sub">{loadingList ? 'Loading...' : `${total} found`}</span>
+              </div>
+              <div className="pdx-row" style={{ marginBottom: 12 }}>
+                <div>
+                  <label className="pdx-lbl" htmlFor="sc">Category</label>
+                  <select id="sc" className="pdx-inp" value={category} onChange={(e) => { setCategory(e.target.value); setPage(1); }}>
+                    <option value="">All categories</option>
+                    {catList.map((c) => <option key={c} value={c}>{catLabel(c)}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="pdx-lbl" htmlFor="ss">Status</label>
+                  <select id="ss" className="pdx-inp" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
+                    <option value="">All statuses</option>
+                    {Object.entries(STATUS_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                  </select>
+                </div>
+                <div style={{ minWidth: 0, maxWidth: 260 }}>
+                  <label className="pdx-lbl" htmlFor="sv">Fund</label>
+                  <select id="sv" className="pdx-inp" style={{ width: '100%' }} value={fund} onChange={(e) => { setFund(e.target.value); setPage(1); }}>
+                    <option value="">All funds</option>
+                    {(summary?.funds || []).filter((x) => !category || x.category === category).map((x) => <option key={x.fund} value={x.fund}>{x.fund}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="pdx-lbl" htmlFor="so">Sort by</label>
+                  <select id="so" className="pdx-inp" value={sort} onChange={(e) => { setSort(e.target.value); setPage(1); }}>
+                    {SORTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                  </select>
+                </div>
+                <div style={{ flex: 1, minWidth: 240 }}>
+                  <label className="pdx-lbl" htmlFor="sq">Search donors and payments</label>
+                  <input id="sq" className="pdx-inp" style={{ width: '100%' }} value={q} maxLength={80} placeholder="Donor name, phone, email, receipt, Razorpay id or fund" onChange={(e) => setQ(e.target.value)} />
+                </div>
+                {filtered && <button type="button" className="pdx-btn" onClick={() => { setCategory(''); setStatus(''); setFund(''); setQ(''); setQNow(''); setPage(1); }}>Clear filters</button>}
               </div>
               <div className="pdx-tablewrap">
                 <table style={{ minWidth: 1000 }}>
@@ -443,7 +512,7 @@ export default function DonationPayments() {
                     <tr>{['Payment date', 'Donor', 'Fund', 'Category', 'Amount', 'Status', 'Transaction id (Razorpay payment)', ''].map((h, i) => <th key={i} scope="col" style={{ textAlign: h === 'Amount' ? 'right' : 'left' }}>{h}</th>)}</tr>
                   </thead>
                   <tbody>
-                    {!loading && rows.length === 0 && (
+                    {!loadingList && rows.length === 0 && (
                       <tr><td colSpan={8} className="pdx-empty">{filtered || preset !== 'all' ? 'No donation payments match these filters.' : 'No donation payments yet.'}</td></tr>
                     )}
                     {rows.map((r) => {
@@ -511,13 +580,23 @@ export default function DonationPayments() {
                   </tbody>
                 </table>
               </div>
-              {pages > 1 && (
-                <div className="pdx-row" style={{ justifyContent: 'center', alignItems: 'center', marginTop: 12 }}>
-                  <button type="button" className="pdx-btn" disabled={page <= 1 || loading} onClick={() => setPage(page - 1)}>Previous</button>
-                  <span style={{ fontSize: 14 }}>Page {page} of {pages}</span>
-                  <button type="button" className="pdx-btn" disabled={page >= pages || loading} onClick={() => setPage(page + 1)}>Next</button>
+              {/* Always shown: the count, the pages, and how many rows to a page */}
+              <div className="pdx-row" style={{ justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
+                <span style={{ fontSize: 14 }}>{loadingList ? 'Loading...' : total === 0 ? 'Showing 0 payments' : `Showing ${showFrom}-${showTo} of ${total} payment${total === 1 ? '' : 's'}`}</span>
+                <div className="pdx-row" role="navigation" aria-label="Pages" style={{ alignItems: 'center' }}>
+                  <button type="button" className="pdx-btn" disabled={page <= 1 || loadingList} onClick={() => setPage(page - 1)}>Previous</button>
+                  {pageList(page, pages).map((n, i) => n === '...'
+                    ? <span key={`gap${i}`} style={{ padding: '0 4px' }}>...</span>
+                    : <button key={n} type="button" className={`pdx-btn${n === page ? ' on' : ''}`} aria-current={n === page ? 'page' : undefined} disabled={loadingList} onClick={() => setPage(n)}>{n}</button>)}
+                  <button type="button" className="pdx-btn" disabled={page >= pages || loadingList} onClick={() => setPage(page + 1)}>Next</button>
                 </div>
-              )}
+                <div className="pdx-row" style={{ alignItems: 'center' }}>
+                  <label className="pdx-lbl" htmlFor="sl" style={{ margin: 0 }}>Rows per page</label>
+                  <select id="sl" className="pdx-inp" value={limit} onChange={(e) => { setLimit(Number(e.target.value)); setPage(1); }}>
+                    {PAGE_SIZES.map((n) => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                </div>
+              </div>
             </section>
           </div>
         )}

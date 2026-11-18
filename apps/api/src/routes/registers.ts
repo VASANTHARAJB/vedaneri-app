@@ -3,7 +3,7 @@ import { db } from '../dbLimit';
 import { authenticate } from '../middleware/auth';
 import { AuthenticatedRequest } from '../types';
 
-// Registers: Seva, Donation, Magazine and Camp (read only), plus on-site (manual) seva and donation entries that staff add and print.
+// Registers: Seva, Donation, Magazine and Camp, plus offline (on-site, manual) entries for all four that staff add, correct, cancel and print.
 // One entry per booking, subscription or registration. Seva, donation and camp entries list every person named:
 // name, relation, gothram, nakshatram, rasi and date of birth. Magazine entries carry the postal address and the plan dates.
 // PAN, Aadhaar, passwords, tokens and the Razorpay signature are never read here.
@@ -35,7 +35,7 @@ const human = (k: string) => k.replace(/^x_/, '').replace(/([a-z])([A-Z])/g, '$1
 // ---------- Which columns exist (looked up once, kept for 10 minutes) ----------
 // The booking tables can carry extra sankalpam columns, and the profile tables may or may not keep a date of birth.
 // Column names come from the database itself and must be plain letters, digits and underscores before they are used.
-type Table = 'seva_bookings' | 'donation_booking' | 'magazine_subscriptions' | 'camp_registrations' | 'camps' | 'devotee_family_members' | 'devotees' | 'register_manual_entries';
+type Table = 'seva_bookings' | 'donation_booking' | 'magazine_subscriptions' | 'camp_registrations' | 'camps' | 'devotee_family_members' | 'devotees' | 'register_manual_entries' | 'sevas' | 'offerings' | 'donation';
 const colCache = new Map<string, { at: number; cols: string[] }>();
 async function columnsOf(table: Table): Promise<string[]> {
   const hit = colCache.get(table);
@@ -62,7 +62,7 @@ const extraColumns = (cols: string[], used: Set<string>, more = false) =>
   cols.filter((c) => (WANTED.test(c) || (more && WANTED_MORE.test(c))) && !used.has(c.toLowerCase()) && !SENSITIVE.test(c) && !/_id$/i.test(c)).slice(0, 12);
 
 type Kind = 'seva' | 'donation' | 'magazine' | 'camp';
-type Ctx = { extra: string[]; devDob: string | null; peopleCol: string | null; campStart: string | null; campEnd: string | null; manual: boolean };
+type Ctx = { extra: string[]; devDob: string | null; peopleCol: string | null; campStart: string | null; campEnd: string | null; manual: boolean; mcols: string[] };
 const HAS_DEVOTEE: Record<Kind, boolean> = { seva: true, donation: true, camp: true, magazine: false };
 const alias = (k: Kind) => (k === 'seva' || k === 'donation' ? 'b' : k === 'camp' ? 'r' : 'm');
 const extraSql = (k: Kind, c: Ctx) => c.extra.map((x) => `, ${alias(k)}.\`${x}\` AS \`x_${x}\``).join('') + (HAS_DEVOTEE[k] && c.devDob ? `, v.\`${c.devDob}\` AS devotee_dob` : '');
@@ -96,7 +96,7 @@ const magSql = (c: Ctx) => `
          CASE m.status WHEN 'ACTIVE' THEN 'PAID' WHEN 'EXPIRED' THEN 'PAID' WHEN 'FAILED' THEN 'FAILED' ELSE 'PENDING' END AS status,
          m.start_date AS event_date, m.end_date AS end_date, m.receipt_no AS receipt_no, m.address AS address, m.pincode AS pincode,
          m.duration_months AS months, m.status AS membership, COALESCE(NULLIF(m.payment_mode,''),'online') AS mode,
-         NULL AS adults, NULL AS children, NULL AS members, m.created_at AS paid_at${extraSql('magazine', c)}
+         NULL AS adults, NULL AS children, NULL AS payment_ref, NULL AS notes, NULL AS entry_date, NULL AS members, m.created_at AS paid_at${extraSql('magazine', c)}
     FROM magazine_subscriptions m`;
 // Camp: the registrant, the camp, how many adults and children, and the people named if the table keeps a list
 const campSql = (c: Ctx) => `
@@ -107,46 +107,57 @@ const campSql = (c: Ctx) => `
          CASE r.payment_status WHEN 'PAID' THEN 'PAID' WHEN 'FAILED' THEN 'FAILED' WHEN 'NONE' THEN 'FREE' ELSE 'PENDING' END AS status,
          ${c.campStart ? `cm.\`${c.campStart}\`` : 'NULL'} AS event_date, ${c.campEnd ? `cm.\`${c.campEnd}\`` : 'NULL'} AS end_date, NULL AS receipt_no,
          NULL AS address, NULL AS pincode, NULL AS months, NULL AS membership, NULL AS mode, r.adults AS adults, r.children AS children,
+         NULL AS payment_ref, NULL AS notes, NULL AS entry_date,
          ${c.peopleCol ? `r.\`${c.peopleCol}\`` : 'NULL'} AS members, r.created_at AS paid_at${extraSql('camp', c)}
     FROM camp_registrations r LEFT JOIN camps cm ON cm.id = r.camp_id LEFT JOIN devotees v ON v.id = r.devotee_id`;
 
 async function context(kind: Kind): Promise<Ctx> {
   const table: Table = kind === 'seva' ? 'seva_bookings' : kind === 'donation' ? 'donation_booking' : kind === 'magazine' ? 'magazine_subscriptions' : 'camp_registrations';
   const [own, dev, camps] = await Promise.all([columnsOf(table), HAS_DEVOTEE[kind] ? columnsOf('devotees') : Promise.resolve([] as string[]), kind === 'camp' ? columnsOf('camps') : Promise.resolve([] as string[])]);
-  const manualCols = kind === 'seva' || kind === 'donation' ? await columnsOf('register_manual_entries') : [];
+  // Make sure the offline table (and the columns the magazine and camp entries use) exists; never let a failure here break the register
+  await ensureManualTable().catch(() => undefined);
+  const manualCols = await columnsOf('register_manual_entries');
+  const newKinds = kind === 'magazine' || kind === 'camp';
   const peopleCol = kind === 'camp' ? own.find((c) => PEOPLE_COL.test(c) && !SENSITIVE.test(c) && !/count|total|num|_id$/i.test(c)) || null : null;
   const used = kind === 'seva' ? SEVA_USED : kind === 'donation' ? DON_USED : kind === 'magazine' ? MAG_USED : new Set([...CAMP_USED, (peopleCol || '').toLowerCase()]);
   return {
     extra: extraColumns(own, used, kind === 'magazine' || kind === 'camp'),
-    devDob: pick(dev, DOB_NAMES), peopleCol, manual: manualCols.length > 0,
+    devDob: pick(dev, DOB_NAMES), peopleCol, mcols: manualCols,
+    manual: manualCols.length > 0 && (!newKinds || NEW_COLS.every((c) => manualCols.includes(c))),
     campStart: pick(camps, ['start_date', 'from_date', 'begin_date', 'date_from', 'starts_on']),
     campEnd: pick(camps, ['end_date', 'to_date', 'date_to', 'ends_on']),
   };
 }
 // On-site entries live in their own table. For the seva and donation registers they are put in the same list as the online
 // bookings. Both halves are converted to one text collation so the database never refuses to combine them.
-const manualSql = (kind: 'seva' | 'donation') => `
+const NEW_COLS = ['end_date', 'months', 'adults', 'children'];
+const manualSql = (kind: Kind, mc: string[]) => {
+  const has = (c: string) => mc.includes(c);
+  return `
   SELECT m.id AS id, 'manual' AS source, m.devotee_id AS devotee_id, m.name AS name, m.email AS email, m.phone AS phone, m.city AS city, m.state AS state,
-         m.item_title AS item, m.category AS category, m.amount AS amount, 'INR' AS currency,
-         CASE m.status WHEN 'CANCELLED' THEN 'CANCELLED' ELSE 'PAID' END AS status,
-         m.pooja_date AS event_date, NULL AS end_date, m.receipt_no AS receipt_no, m.address AS address, m.pincode AS pincode,
-         NULL AS months, NULL AS membership, m.payment_mode AS mode, NULL AS adults, NULL AS children, m.payment_ref AS payment_ref,
+         m.item_title AS item, ${kind === 'camp' ? "CASE WHEN m.status = 'CANCELLED' THEN 'CANCELLED' ELSE 'REGISTERED' END" : 'm.category'} AS category, m.amount AS amount, 'INR' AS currency,
+         CASE m.status WHEN 'CANCELLED' THEN 'CANCELLED' WHEN 'ACTIVE' THEN CASE WHEN m.amount <= 0 THEN 'FREE' ELSE 'PAID' END ELSE 'PAID' END AS status,
+         m.pooja_date AS event_date, ${has('end_date') ? 'm.end_date' : 'NULL'} AS end_date, m.receipt_no AS receipt_no, m.address AS address, m.pincode AS pincode,
+         ${has('months') ? 'm.months' : 'NULL'} AS months,
+         ${kind === 'magazine' && has('end_date') ? "CASE WHEN m.status = 'CANCELLED' THEN NULL WHEN m.end_date >= CURDATE() THEN 'ACTIVE' ELSE 'EXPIRED' END" : 'NULL'} AS membership,
+         m.payment_mode AS mode, ${has('adults') ? 'm.adults' : 'NULL'} AS adults, ${has('children') ? 'm.children' : 'NULL'} AS children, m.payment_ref AS payment_ref,
          CONCAT_WS('. ', NULLIF(m.notes,''), CASE WHEN m.status = 'CANCELLED' THEN CONCAT('Cancelled: ', COALESCE(m.cancel_reason,'no reason given')) END) AS notes,
-         m.entry_date AS entry_date, m.people AS members, TIMESTAMP(m.entry_date, COALESCE(TIME(m.created_at), '00:00:00')) AS paid_at
+         m.entry_date AS entry_date, ${kind === 'seva' || kind === 'donation' ? 'm.people' : 'NULL'} AS members, TIMESTAMP(m.entry_date, COALESCE(TIME(m.created_at), '00:00:00')) AS paid_at
     FROM register_manual_entries m WHERE m.kind = '${kind}'`;
+};
 const UNION_COLS = ['id', 'source', 'devotee_id', 'name', 'email', 'phone', 'city', 'state', 'item', 'category', 'amount', 'currency', 'status', 'event_date', 'end_date', 'receipt_no', 'address', 'pincode', 'months', 'membership', 'mode', 'adults', 'children', 'payment_ref', 'notes', 'entry_date', 'members', 'paid_at'];
 const UNION_TEXT = new Set(['source', 'devotee_id', 'name', 'email', 'phone', 'city', 'state', 'item', 'category', 'currency', 'status', 'receipt_no', 'address', 'pincode', 'membership', 'mode', 'payment_ref', 'notes', 'members']);
-function unionSql(kind: 'seva' | 'donation', c: Ctx, online: string) {
+function unionSql(kind: Kind, c: Ctx, online: string) {
   const extras = [...c.extra.map((x) => `x_${x}`), ...(c.devDob ? ['devotee_dob'] : [])];
   const pickCols = (al: string, has: (col: string) => boolean) => [...UNION_COLS, ...extras].map((col) => {
     const ref = has(col) ? `${al}.${col}` : 'NULL';
     return (UNION_TEXT.has(col) || col.startsWith('x_')) ? `CONVERT(${ref} USING utf8mb4) COLLATE utf8mb4_unicode_ci AS ${col}` : `${ref} AS ${col}`;
   }).join(', ');
-  return `SELECT ${pickCols('a', () => true)} FROM (${online}) a UNION ALL SELECT ${pickCols('m', (col) => UNION_COLS.includes(col))} FROM (${manualSql(kind)}) m`;
+  return `SELECT ${pickCols('a', () => true)} FROM (${online}) a UNION ALL SELECT ${pickCols('m', (col) => UNION_COLS.includes(col))} FROM (${manualSql(kind, c.mcols)}) m`;
 }
 const sqlFor = (kind: Kind, c: Ctx) => {
   const online = kind === 'seva' ? sevaSql(c) : kind === 'donation' ? donSql(c) : kind === 'magazine' ? magSql(c) : campSql(c);
-  return (kind === 'seva' || kind === 'donation') && c.manual ? unionSql(kind, c, online) : online;
+  return c.manual ? unionSql(kind, c, online) : online;
 };
 const SHOWS_PEOPLE: Record<Kind, boolean> = { seva: true, donation: true, camp: true, magazine: false };
 
@@ -293,7 +304,7 @@ function filters(q: Request['query'], kind: Kind) {
   const status = one(q.status).toUpperCase();
   if (status) { if (!(STATUSES as readonly string[]).includes(status)) return { error: 'Unknown status.' } as const; where.push('r.status = ?'); args.push(status); }
   const source = one(q.source);
-  if (source && (kind === 'seva' || kind === 'donation')) { if (source !== 'online' && source !== 'manual') return { error: 'Unknown entry type.' } as const; where.push('r.source = ?'); args.push(source); }
+  if (source) { if (source !== 'online' && source !== 'manual') return { error: 'Unknown entry type.' } as const; where.push('r.source = ?'); args.push(source); }
   const item = one(q.item).slice(0, 255);
   if (item) { where.push('r.item = ?'); args.push(item); }
   // The dates can mean the payment day (all registers), the seva day, the subscription start or the camp start ("event"), or the subscription or camp end ("end").
@@ -347,7 +358,7 @@ const TOTALS = {
   magazine: `COALESCE(SUM(r.membership='ACTIVE'),0) active, COALESCE(SUM(r.membership='EXPIRED'),0) expired,
              COALESCE(SUM(r.membership='ACTIVE' AND r.end_date >= CURDATE() AND r.end_date <= DATE_ADD(CURDATE(), INTERVAL 30 DAY)),0) soon,
              COALESCE(SUM(r.membership='ACTIVE' AND r.category IN ('print','both')),0) post`,
-  camp: `COALESCE(SUM(r.adults),0) adults, COALESCE(SUM(r.children),0) children`,
+  camp: `COALESCE(SUM(CASE WHEN r.status <> 'CANCELLED' THEN r.adults END),0) adults, COALESCE(SUM(CASE WHEN r.status <> 'CANCELLED' THEN r.children END),0) children`,
 };
 function listRoute(kind: Kind) {
   return async (req: Request, res: Response) => {
@@ -401,10 +412,53 @@ function optionsRoute(kind: Kind) {
             ? await db.query(`SELECT DISTINCT plan_name AS item, delivery AS category FROM magazine_subscriptions WHERE plan_name IS NOT NULL AND plan_name <> '' ORDER BY plan_name LIMIT 300`)
             : await db.query(`SELECT DISTINCT COALESCE(cm.title_en,'Camp') AS item, COALESCE(NULLIF(r.status,''),'registered') AS category FROM camp_registrations r LEFT JOIN camps cm ON cm.id = r.camp_id ORDER BY item LIMIT 300`);
       let list = rows as any[];
-      if (ctx.manual && (kind === 'seva' || kind === 'donation')) {
+      if (ctx.manual) {
         try { const [m]: any = await db.query(`SELECT DISTINCT item_title AS item, category FROM register_manual_entries WHERE kind = ? AND item_title <> '' ORDER BY item_title LIMIT 300`, [kind]); list = [...list, ...(m as any[])]; } catch { /* online names only */ }
       }
+      // The camps on offer, for the offline camp form: its name, dates and fee
+      let catalog: { title: string; start?: string | null; end?: string | null; fee?: number | null; category?: string; amount?: number | null }[] = [];
+      // The sevas and donation funds on offer (from the Sevas and Donation Funds pages), with their category and fixed amount, for the offline form's drop-down
+      if (kind === 'seva' || kind === 'donation') {
+        // A title can be plain text, a JSON text like {"en":"..","ta":".."}, or an object the database driver already parsed
+        const locale = (v: any): string => {
+          if (v == null) return '';
+          if (typeof v === 'object') return String((v as any).en || (v as any).ta || '').replace(/\s+/g, ' ').trim();
+          const t = String(v).trim();
+          if (t.startsWith('{') && t.endsWith('}')) { try { const o = JSON.parse(t); return String(o.en || o.ta || '').replace(/\s+/g, ' ').trim(); } catch { return t; } }
+          return t.replace(/\s+/g, ' ');
+        };
+        try {
+          let table: Table = 'donation';
+          if (kind === 'seva') { const [t]: any = await db.query("SHOW TABLES LIKE 'sevas'"); table = (t as any[]).length ? 'sevas' : 'offerings'; }
+          const mc = await columnsOf(table);
+          const titleCol = pick(mc, ['title_en', 'title', 'name']);
+          if (titleCol) {
+            const amtCol = pick(mc, ['amount', 'price', 'rate', 'base_amount', 'fixed_amount']);
+            const [mr]: any = await db.query(`SELECT \`${titleCol}\` AS t, ${mc.includes('category') ? 'category' : "''"} AS c, ${amtCol ? `\`${amtCol}\`` : 'NULL'} AS a, ${mc.includes('price_type') ? 'price_type' : "'fixed'"} AS pt, ${mc.includes('status') ? 'status' : "'published'"} AS st FROM \`${table}\` LIMIT 500`);
+            const once = new Set<string>();
+            catalog = (mr as any[]).filter((r) => { const k = locale(r.t).toLowerCase(); if (r.st === 'draft' || !k || once.has(k)) return false; once.add(k); return true; }).map((r) => ({
+              title: locale(r.t), category: kind === 'seva' ? (r.c === 'corpus' ? 'corpus' : 'seva') : (String(r.c || '').trim() || 'ashram'),
+              amount: r.pt !== 'custom' && Number(r.a) > 0 ? money(r.a) : null,
+            }));
+          }
+        } catch { /* the form falls back to the names used in earlier bookings */ }
+        // Names used in bookings that are no longer on the pages still appear, with the category they were booked under
+        const seen = new Set(catalog.map((c) => c.title.toLowerCase()));
+        for (const r of list) { const t = locale(r.item); if (t && !seen.has(t.toLowerCase())) { seen.add(t.toLowerCase()); catalog.push({ title: t, category: kind === 'seva' ? (r.category === 'corpus' ? 'corpus' : 'seva') : (String(r.category || '').trim() || 'ashram'), amount: null }); } }
+        catalog.sort((x, y) => x.title.localeCompare(y.title));
+      }
+      if (kind === 'camp') {
+        try {
+          const cc = await columnsOf('camps');
+          const fee = pick(cc, ['fee_amount']);
+          const [cr]: any = await db.query(
+            `SELECT c.title_en AS title, ${ctx.campStart ? `c.\`${ctx.campStart}\`` : 'NULL'} AS sd, ${ctx.campEnd ? `c.\`${ctx.campEnd}\`` : 'NULL'} AS ed, ${fee ? `c.\`${fee}\`` : 'NULL'} AS fee
+               FROM camps c WHERE c.title_en IS NOT NULL AND c.title_en <> '' ORDER BY ${ctx.campStart ? `c.\`${ctx.campStart}\` DESC,` : ''} c.title_en LIMIT 200`);
+          catalog = (cr as any[]).map((r) => ({ title: String(r.title), start: dateOnly(r.sd), end: dateOnly(r.ed), fee: r.fee == null ? null : money(r.fee) }));
+        } catch { /* the form lets the camp name be typed */ }
+      }
       return res.json({
+        catalog,
         items: [...new Set(list.map((r) => String(r.item)))].sort((x, y) => x.localeCompare(y)),
         categories: [...new Set(list.map((r) => String(r.category || '')).filter(Boolean))],
         dobKept: { family: !!pick(fam, DOB_NAMES), devotee: !!pick(dev, DOB_NAMES) },
@@ -439,17 +493,17 @@ function exportRoute(kind: Kind) {
       console.log(`[audit] ${kind} register export: ${rows.length} entries, user ${who(req)}`);
       let lines: string[];
       if (kind === 'magazine') {
-        const head = ['Sl no', 'Payment date', 'Receipt no', 'Devotee id', 'Subscriber', 'Phone', 'Email', 'Address', 'City', 'State', 'Pincode', 'Plan', 'Delivery', 'Months', 'Starts', 'Ends', 'Membership', 'Payment mode', 'Amount (INR)', 'Status', 'Other details'];
+        const head = ['Sl no', 'Payment date', 'Receipt no', 'Devotee id', 'Subscriber', 'Phone', 'Email', 'Address', 'City', 'State', 'Pincode', 'Plan', 'Delivery', 'Months', 'Starts', 'Ends', 'Membership', 'Payment mode', 'Amount (INR)', 'Status', 'Entry', 'Other details'];
         lines = [head.map(cell).join(',')];
-        rows.forEach((r, i) => lines.push([i + 1, r.paid_at, r.receipt_no, r.devotee_id, r.name, r.phone, r.email, r.address, r.city, r.state, r.pincode, r.item, r.category, r.months, r.event_date, r.end_date, r.membership, r.mode, r.amount, r.status, r.details.map((d) => `${d.label}: ${d.value}`).join('; ')].map(cell).join(',')));
+        rows.forEach((r, i) => lines.push([i + 1, r.paid_at, r.receipt_no, r.devotee_id, r.name, r.phone, r.email, r.address, r.city, r.state, r.pincode, r.item, r.category, r.months, r.event_date, r.end_date, r.membership, r.mode, r.amount, r.status, r.source === 'manual' ? 'On-site' : 'Online', r.details.map((d) => `${d.label}: ${d.value}`).join('; ')].map(cell).join(',')));
       } else {
         const lead = kind === 'seva' ? ['Sl no', 'Payment date', 'Seva date', 'Receipt no', 'Devotee id', 'Devotee', 'Phone', 'Email', 'City', 'State', 'Seva', 'Category', 'Amount (INR)', 'Status', 'Entry', 'Payment mode', 'Address']
           : kind === 'donation' ? ['Sl no', 'Payment date', 'Booking date', 'Receipt no', 'Devotee id', 'Donor', 'Phone', 'Email', 'City', 'State', 'Fund', 'Category', 'Amount (INR)', 'Status', 'Entry', 'Payment mode', 'Address']
-            : ['Sl no', 'Registered on', 'Camp starts', 'Camp ends', 'Devotee id', 'Registrant', 'Phone', 'Email', 'City', 'State', 'Camp', 'Registration status', 'Adults', 'Children', 'Amount (INR)', 'Payment'];
+            : ['Sl no', 'Registered on', 'Camp starts', 'Camp ends', 'Devotee id', 'Registrant', 'Phone', 'Email', 'City', 'State', 'Camp', 'Registration status', 'Adults', 'Children', 'Amount (INR)', 'Payment', 'Entry', 'Receipt no', 'Payment mode'];
         lines = [[...lead, ...PEOPLE_HEAD, 'Other details'].map(cell).join(',')];
         rows.forEach((r, i) => {
           const base = kind === 'camp'
-            ? [i + 1, r.paid_at, r.event_date, r.end_date, r.devotee_id, r.name, r.phone, r.email, r.city, r.state, r.item, r.category, r.adults, r.children, r.amount, r.status]
+            ? [i + 1, r.paid_at, r.event_date, r.end_date, r.devotee_id, r.name, r.phone, r.email, r.city, r.state, r.item, r.category, r.adults, r.children, r.amount, r.status, r.source === 'manual' ? 'On-site' : 'Online', r.receipt_no, r.mode]
             : [i + 1, r.paid_at, r.event_date, r.receipt_no, r.devotee_id, r.name, r.phone, r.email, r.city, r.state, r.item, r.category, r.amount, r.status, r.source === 'manual' ? 'On-site' : 'Online', r.mode, [r.address, r.pincode].filter(Boolean).join(' ')];
           const booking = r.details.map((d) => `${d.label}: ${d.value}`).join('; ');
           const people = r.members.length ? r.members : [null];
@@ -480,6 +534,10 @@ CREATE TABLE IF NOT EXISTS register_manual_entries (
   receipt_no VARCHAR(70) NOT NULL,
   entry_date DATE NOT NULL,
   pooja_date DATE NULL,
+  end_date DATE NULL,
+  months SMALLINT UNSIGNED NULL,
+  adults SMALLINT UNSIGNED NULL,
+  children SMALLINT UNSIGNED NULL,
   item_title VARCHAR(255) NOT NULL,
   category VARCHAR(50) NOT NULL DEFAULT '',
   amount DECIMAL(12,2) NOT NULL,
@@ -507,7 +565,14 @@ CREATE TABLE IF NOT EXISTS register_manual_entries (
 let manualReady: Promise<void> | null = null;
 function ensureManualTable(): Promise<void> {
   if (!manualReady) {
-    manualReady = (async () => { await db.query(MANUAL_DDL); colCache.delete('register_manual_entries'); })().catch((e) => { manualReady = null; throw e; });
+    manualReady = (async () => {
+      await db.query(MANUAL_DDL);
+      // An older table (seva and donation only) gets the columns the magazine and camp entries use. This never blocks the seva and donation entries.
+      try {
+        await db.query('ALTER TABLE register_manual_entries ADD COLUMN IF NOT EXISTS end_date DATE NULL, ADD COLUMN IF NOT EXISTS months SMALLINT UNSIGNED NULL, ADD COLUMN IF NOT EXISTS adults SMALLINT UNSIGNED NULL, ADD COLUMN IF NOT EXISTS children SMALLINT UNSIGNED NULL');
+      } catch (e: any) { console.error('Registers: could not add the magazine and camp columns to register_manual_entries:', e?.sqlMessage || e?.message || e); }
+      colCache.delete('register_manual_entries');
+    })().catch((e) => { manualReady = null; throw e; });
   }
   return manualReady;
 }
@@ -516,29 +581,33 @@ const PAY_MODES = ['cash', 'upi', 'cheque', 'dd', 'card', 'bank', 'other'] as co
 const todayUtc = () => new Date().toISOString().slice(0, 10);
 // The Indian financial year of a date, as in 2627 for April 2026 to March 2027
 const fyOf = (day: string) => { const y = +day.slice(0, 4), m = +day.slice(5, 7); const a = m >= 4 ? y : y - 1; return `${pad2(a % 100)}${pad2((a + 1) % 100)}`; };
-const defaultSeries = (kind: 'seva' | 'donation', day: string) => `${kind === 'seva' ? 'OS' : 'OD'}-${fyOf(day)}`;
+const SERIES_PREFIX: Record<Kind, string> = { seva: 'OS', donation: 'OD', magazine: 'OM', camp: 'OC' };
+const defaultSeries = (kind: Kind, day: string) => `${SERIES_PREFIX[kind]}-${fyOf(day)}`;
 const SERIES = /^[A-Za-z0-9][A-Za-z0-9-]{0,29}$/;
 
 type Clean = {
   series: string | null; serial: number | null; entry_date: string; pooja_date: string | null; item_title: string; category: string; amount: number;
   payment_mode: string; payment_ref: string; name: string; phone: string; email: string; address: string; city: string; state: string; pincode: string; notes: string;
-  people: Record<string, string>[];
+  devotee_id: string; people: Record<string, string>[]; end_date: string | null; months: number | null; adults: number | null; children: number | null;
 };
-function cleanManual(kind: 'seva' | 'donation', b: any): { error: string } | { data: Clean } {
+const addMonths = (day: string, n: number) => { const d = new Date(day + 'T00:00:00Z'); const want = (d.getUTCMonth() + n) % 12; d.setUTCMonth(d.getUTCMonth() + n); if (d.getUTCMonth() !== (want + 12) % 12) d.setUTCDate(0); d.setUTCDate(d.getUTCDate() - 1); return d.toISOString().slice(0, 10); };
+function cleanManual(kind: Kind, b: any): { error: string } | { data: Clean } {
   if (!b || typeof b !== 'object') return { error: 'Nothing was sent.' };
   const t = (v: unknown, n: number) => cut(typeof v === 'number' ? String(v) : v, n);
   const name = t(b.name, 200);
   if (!name) return { error: 'Please enter the devotee name.' };
   const amount = Math.round(Number(b.amount) * 100) / 100;
-  if (!Number.isFinite(amount) || amount <= 0) return { error: 'Please enter the amount received.' };
+  if (!Number.isFinite(amount) || amount < 0 || (amount === 0 && kind !== 'camp')) return { error: kind === 'camp' ? 'Please enter the amount received (0 for a free camp).' : 'Please enter the amount received.' };
   if (amount > 10_000_000) return { error: 'The amount is too large. Please check it.' };
   const entry_date = t(b.entry_date, 10);
   if (!realDay(entry_date)) return { error: 'Please enter a valid receipt date.' };
   if (Date.parse(entry_date) > Date.parse(todayUtc()) + 86_400_000) return { error: 'The receipt date cannot be in the future.' };
   const pooja = t(b.pooja_date, 10);
-  if (pooja && !realDay(pooja)) return { error: 'The pooja date is not valid.' };
+  if (pooja && !realDay(pooja)) return { error: kind === 'seva' ? 'The pooja date is not valid.' : 'The start date is not valid.' };
+  const endIn = t(b.end_date, 10);
+  if (endIn && !realDay(endIn)) return { error: 'The end date is not valid.' };
   const item_title = t(b.item_title, 255);
-  if (!item_title) return { error: kind === 'seva' ? 'Please enter the seva or pooja name.' : 'Please enter the fund name.' };
+  if (!item_title) return { error: kind === 'seva' ? 'Please enter the seva or pooja name.' : kind === 'donation' ? 'Please enter the fund name.' : kind === 'camp' ? 'Please enter the camp name.' : 'Please enter the subscription plan.' };
   const mode = t(b.payment_mode, 20).toLowerCase() || 'cash';
   if (!(PAY_MODES as readonly string[]).includes(mode)) return { error: 'Unknown payment mode.' };
   const phone = t(b.phone, 30);
@@ -549,6 +618,7 @@ function cleanManual(kind: 'seva' | 'donation', b: any): { error: string } | { d
   if (pincode && !/^[0-9A-Za-z -]{3,12}$/.test(pincode)) return { error: 'The pincode is not valid.' };
   let category = t(b.category, 50).toLowerCase();
   if (kind === 'seva') { category = category || 'seva'; if (category !== 'seva' && category !== 'corpus') return { error: 'Unknown category.' }; }
+  else if (kind === 'magazine' || kind === 'camp') { category = category || (kind === 'magazine' ? 'print' : 'registered'); if (!/^[a-z0-9 _-]{1,50}$/.test(category)) return { error: 'Unknown category.' }; }
   else { category = category || 'ashram'; if (!/^[a-z0-9 _-]{1,50}$/.test(category)) return { error: 'Unknown category.' }; }
   const series = t(b.series, 30);
   if (series && !SERIES.test(series)) return { error: 'The receipt series can use letters, numbers and dashes only.' };
@@ -557,7 +627,24 @@ function cleanManual(kind: 'seva' | 'donation', b: any): { error: string } | { d
     serial = Number(b.serial);
     if (!Number.isInteger(serial) || serial < 1 || serial > 9_999_999) return { error: 'The receipt number must be a whole number from 1 to 9999999.' };
   }
-  const rawPeople = Array.isArray(b.people) ? b.people : [];
+  let end_date: string | null = null, months: number | null = null, adults: number | null = null, children: number | null = null;
+  let pooja_out: string | null = pooja || null;
+  if (kind === 'magazine') {
+    months = Math.round(Number(b.months));
+    if (!Number.isInteger(months) || months < 1 || months > 120) return { error: 'Please enter the subscription length in months (1 to 120).' };
+    if (!pooja) pooja_out = entry_date;
+    end_date = endIn || addMonths(pooja_out as string, months);
+    if (end_date < (pooja_out as string)) return { error: 'The end date cannot be before the start date.' };
+    if (category !== 'digital' && !address_ok(b)) return { error: 'Please enter the postal address, the magazine is posted there.' };
+  } else if (kind === 'camp') {
+    adults = b.adults === '' || b.adults == null ? 0 : Math.round(Number(b.adults));
+    children = b.children === '' || b.children == null ? 0 : Math.round(Number(b.children));
+    if (!Number.isInteger(adults) || !Number.isInteger(children) || adults < 0 || children < 0 || adults > 1000 || children > 1000) return { error: 'Please check the number of adults and children.' };
+    if (adults + children < 1) return { error: 'Please enter at least one adult or child.' };
+    end_date = endIn || null;
+    if (end_date && pooja_out && end_date < pooja_out) return { error: 'The camp end date cannot be before its start date.' };
+  }
+  const rawPeople = kind === 'seva' || kind === 'donation' ? (Array.isArray(b.people) ? b.people : []) : [];
   if (rawPeople.length > 5) return { error: 'A sankalpam can name up to 5 people.' };
   const people: Record<string, string>[] = [];
   for (const p of rawPeople) {
@@ -568,13 +655,15 @@ function cleanManual(kind: 'seva' | 'donation', b: any): { error: string } | { d
     }
     if (Object.values(row).some(Boolean)) people.push(row);
   }
-  return { data: { series: series || null, serial, entry_date, pooja_date: pooja || null, item_title, category, amount, payment_mode: mode, payment_ref: t(b.payment_ref, 100), name, phone, email, address: t(b.address, 500), city: t(b.city, 100), state: t(b.state, 100), pincode, notes: t(b.notes, 500), people } };
+  return { data: { series: series || null, serial, entry_date, pooja_date: pooja_out, item_title, category, amount, payment_mode: mode, payment_ref: t(b.payment_ref, 100), name, phone, email, address: t(b.address, 500), city: t(b.city, 100), state: t(b.state, 100), pincode, notes: t(b.notes, 500), devotee_id: t(b.devotee_id, 64), people, end_date, months, adults, children } };
 }
 
+const address_ok = (b: any) => !!(String(b?.address ?? '').trim() || String(b?.city ?? '').trim());
 const manualOut = (r: any) => ({
-  id: Number(r.id), kind: r.kind as 'seva' | 'donation', series: r.series as string, serial: Number(r.serial), receipt_no: r.receipt_no as string,
+  id: Number(r.id), kind: r.kind as Kind,
+  end_date: dateOnly(r.end_date), months: r.months == null ? null : Number(r.months), adults: r.adults == null ? null : Number(r.adults), children: r.children == null ? null : Number(r.children), series: r.series as string, serial: Number(r.serial), receipt_no: r.receipt_no as string,
   entry_date: dateOnly(r.entry_date), pooja_date: dateOnly(r.pooja_date), item_title: r.item_title as string, category: r.category as string,
-  amount: money(r.amount), payment_mode: r.payment_mode as string, payment_ref: (r.payment_ref || '') as string,
+  amount: money(r.amount), payment_mode: r.payment_mode as string, payment_ref: (r.payment_ref || '') as string, devotee_id: (r.devotee_id || '') as string,
   name: r.name as string, phone: (r.phone || '') as string, email: (r.email || '') as string, address: (r.address || '') as string,
   city: (r.city || '') as string, state: (r.state || '') as string, pincode: (r.pincode || '') as string, notes: (r.notes || '') as string,
   status: r.status as string, cancel_reason: (r.cancel_reason || '') as string, people: readMembers(r.people), created_by: r.created_by as string | null, created_at: iso(r.created_at),
@@ -587,7 +676,7 @@ const nextSerial = async (kind: string, series: string) => {
 };
 const idOf = (req: Request) => { const v = String(req.params.id || ''); return /^\d{1,18}$/.test(v) ? v : null; };
 
-function manualRoutes(kind: 'seva' | 'donation') {
+function manualRoutes(kind: Kind) {
   const base = `/admin/${kind}/manual`;
 
   // The receipt number the next entry will get (the series for the date's financial year unless one is given)
@@ -617,9 +706,9 @@ function manualRoutes(kind: 'seva' | 'donation') {
         const receipt = `${series}-${String(serial).padStart(4, '0')}`;
         try {
           const [r]: any = await db.query(
-            `INSERT INTO register_manual_entries (kind, series, serial, receipt_no, entry_date, pooja_date, item_title, category, amount, payment_mode, payment_ref, name, phone, email, address, city, state, pincode, people, notes, created_by)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-            [kind, series, serial, receipt, d.entry_date, d.pooja_date, d.item_title, d.category, d.amount, d.payment_mode, d.payment_ref || null, d.name, d.phone || null, d.email || null, d.address || null, d.city || null, d.state || null, d.pincode || null, d.people.length ? JSON.stringify(d.people) : null, d.notes || null, who(req)]);
+            `INSERT INTO register_manual_entries (kind, series, serial, receipt_no, entry_date, pooja_date, end_date, months, adults, children, item_title, category, amount, payment_mode, payment_ref, devotee_id, name, phone, email, address, city, state, pincode, people, notes, created_by)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+            [kind, series, serial, receipt, d.entry_date, d.pooja_date, d.end_date, d.months, d.adults, d.children, d.item_title, d.category, d.amount, d.payment_mode, d.payment_ref || null, d.devotee_id || null, d.name, d.phone || null, d.email || null, d.address || null, d.city || null, d.state || null, d.pincode || null, d.people.length ? JSON.stringify(d.people) : null, d.notes || null, who(req)]);
           console.log(`[audit] on-site ${kind} entry created: id ${r.insertId}, receipt ${receipt}, amount ${d.amount}, user ${who(req)}`);
           return res.status(201).json({ id: Number(r.insertId), receipt_no: receipt, series, serial });
         } catch (e: any) {
@@ -656,8 +745,8 @@ function manualRoutes(kind: 'seva' | 'donation') {
       const receipt = `${series}-${String(serial).padStart(4, '0')}`;
       try {
         await db.query(
-          `UPDATE register_manual_entries SET series=?, serial=?, receipt_no=?, entry_date=?, pooja_date=?, item_title=?, category=?, amount=?, payment_mode=?, payment_ref=?, name=?, phone=?, email=?, address=?, city=?, state=?, pincode=?, people=?, notes=? WHERE id=? AND kind=?`,
-          [series, serial, receipt, d.entry_date, d.pooja_date, d.item_title, d.category, d.amount, d.payment_mode, d.payment_ref || null, d.name, d.phone || null, d.email || null, d.address || null, d.city || null, d.state || null, d.pincode || null, d.people.length ? JSON.stringify(d.people) : null, d.notes || null, id, kind]);
+          `UPDATE register_manual_entries SET series=?, serial=?, receipt_no=?, entry_date=?, pooja_date=?, end_date=?, months=?, adults=?, children=?, item_title=?, category=?, amount=?, payment_mode=?, payment_ref=?, devotee_id=COALESCE(NULLIF(?, ''), devotee_id), name=?, phone=?, email=?, address=?, city=?, state=?, pincode=?, people=?, notes=? WHERE id=? AND kind=?`,
+          [series, serial, receipt, d.entry_date, d.pooja_date, d.end_date, d.months, d.adults, d.children, d.item_title, d.category, d.amount, d.payment_mode, d.payment_ref || null, d.devotee_id, d.name, d.phone || null, d.email || null, d.address || null, d.city || null, d.state || null, d.pincode || null, d.people.length ? JSON.stringify(d.people) : null, d.notes || null, id, kind]);
       } catch (e: any) {
         if (isDup(e)) return res.status(409).json({ message: `Receipt number ${receipt} is already used by another entry.` });
         throw e;
@@ -684,11 +773,13 @@ function manualRoutes(kind: 'seva' | 'donation') {
 }
 manualRoutes('seva');
 manualRoutes('donation');
+manualRoutes('magazine');
+manualRoutes('camp');
 
 // ---------- Find a devotee by mobile number, so the on-site form can fill in what is already saved ----------
 // Looks in the registered devotees (with the people in their family list) and in earlier on-site entries.
 type Candidate = {
-  source: 'devotee' | 'onsite'; devotee_id: string; label: string; name: string; email: string; phone: string;
+  source: 'devotee' | 'onsite'; devotee_id: string; code: string; label: string; name: string; email: string; phone: string;
   address: string; city: string; state: string; pincode: string; people: Partial<Member>[];
 };
 const ADDRESS_COLS = ['address', 'address_line1', 'address_line_1', 'addressline1', 'street', 'street_address'];
@@ -700,8 +791,14 @@ const ISO_DAY_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 
 router.get('/admin/devotee-lookup', async (req, res) => {
   try {
-    const digits = one(req.query.phone).replace(/\D/g, '');
-    if (digits.length < 7 || digits.length > 15) return res.status(400).json({ message: 'Please enter the full mobile number.' });
+    // One search box: a mobile number (7 to 15 digits) or a devotee id such as SDSS00001 (or just its number, like 1)
+    const raw = (one(req.query.q) || one(req.query.phone)).trim().slice(0, 40);
+    if (!raw) return res.status(400).json({ message: 'Please enter a mobile number or a devotee id.' });
+    const phoneLike = /^[+0-9 ()-]+$/.test(raw);
+    const digits = raw.replace(/\D/g, '');
+    const byPhone = phoneLike && digits.length >= 7;
+    if (byPhone && digits.length > 15) return res.status(400).json({ message: 'The mobile number is too long.' });
+    if (!byPhone && !/^[A-Za-z0-9_-]{1,40}$/.test(raw)) return res.status(400).json({ message: 'Please enter the full mobile number or a devotee id such as SDSS00001.' });
     const n = Math.min(10, digits.length);
     const tail = digits.slice(-n);
     const out: Candidate[] = [];
@@ -712,9 +809,13 @@ router.get('/admin/devotee-lookup', async (req, res) => {
       const addr = pick(dcols, ADDRESS_COLS), pin = pick(dcols, PINCODE_COLS), dob = pick(dcols, DOB_NAMES);
       const own = ['gothram', 'gotram', 'gotra', 'nakshathiram', 'nakshatram', 'nakshatra', 'rasi', 'raasi', 'rashi'].filter((c) => dcols.includes(c));
       const extra = [addr, pin, dob, ...own].filter((c): c is string => !!c).map((c) => `, \`${c}\``).join('');
+      const hasCode = dcols.includes('devotee_code');
+      // By mobile number, or by devotee id: the code (SDSS00001), the internal id, or the bare number matched against the end of a code
+      const where = byPhone ? `${cleanPhone('phone', n)} = ?` : hasCode ? `(devotee_code = ? OR id = ? OR (? REGEXP '^[0-9]{1,8}$' AND devotee_code LIKE CONCAT('%', LPAD(?, 5, '0'))))` : 'id = ?';
+      const args = byPhone ? [tail] : hasCode ? [raw, raw, raw, raw] : [raw];
       const [rows]: any = await db.query(
-        `SELECT id, TRIM(CONCAT(COALESCE(first_name,''),' ',COALESCE(last_name,''))) AS name, email, phone, city, state${extra}
-           FROM devotees WHERE ${cleanPhone('phone', n)} = ? ORDER BY id DESC LIMIT 5`, [tail]);
+        `SELECT id, ${hasCode ? 'devotee_code AS code,' : "'' AS code,"} TRIM(CONCAT(COALESCE(first_name,''),' ',COALESCE(last_name,''))) AS name, email, phone, city, state${extra}
+           FROM devotees WHERE ${where} ORDER BY id DESC LIMIT 5`, args);
       const ids = (rows as any[]).map((r) => String(r.id));
       const fam = new Map<string, any[]>();
       if (ids.length) {
@@ -740,14 +841,14 @@ router.get('/admin/devotee-lookup', async (req, res) => {
         }));
         const others = (fam.get(String(r.id)) || []).filter((m) => norm(m.name) !== norm(self.name));
         out.push({
-          source: 'devotee', devotee_id: String(r.id), label: `${r.name || 'Devotee'} (registered devotee)`, name: cut(r.name, 200), email: cut(r.email, 150), phone: cut(r.phone, 30),
+          source: 'devotee', devotee_id: String(r.id), code: cut(r.code, 30), label: `${r.name || 'Devotee'} (${r.code ? r.code : 'registered devotee'})`, name: cut(r.name, 200), email: cut(r.email, 150), phone: cut(r.phone, 30),
           address: addr ? cut(r[addr], 500) : '', city: cut(r.city, 100), state: cut(r.state, 100), pincode: pin ? cut(r[pin], 12) : '', people: [self, ...others].slice(0, 30),
         });
       }
     } catch (e: any) { console.error('Registers: devotee lookup skipped', e?.sqlMessage || e?.message || e); }
 
     // 2. Earlier on-site entries for the same number (the latest one)
-    if (out.length < 5) {
+    if (byPhone && out.length < 5) {
       try {
         const [rows]: any = await db.query(
           `SELECT name, email, phone, address, city, state, pincode, people FROM register_manual_entries
@@ -756,7 +857,7 @@ router.get('/admin/devotee-lookup', async (req, res) => {
           // A person already known as a registered devotee is not offered twice
           if (out.some((c) => norm(c.name) === norm(r.name))) continue;
           out.push({
-            source: 'onsite', devotee_id: '', label: `${r.name} (earlier on-site entry)`, name: cut(r.name, 200), email: cut(r.email, 150), phone: cut(r.phone, 30),
+            source: 'onsite', devotee_id: '', code: '', label: `${r.name} (earlier on-site entry)`, name: cut(r.name, 200), email: cut(r.email, 150), phone: cut(r.phone, 30),
             address: cut(r.address, 500), city: cut(r.city, 100), state: cut(r.state, 100), pincode: cut(r.pincode, 12), people: readMembers(r.people).map(personOut),
           });
         }
@@ -837,6 +938,61 @@ function labelsRoute(type: 'corpus' | 'subscription') {
 router.get('/admin/labels/corpus', labelsRoute('corpus'));
 router.get('/admin/labels/subscription', labelsRoute('subscription'));
 
+// Devotee address labels: every devotee with a name, postal address and contact number (no booking needed).
+// Filters: joined from/to, a search word, and whether an address is on record.
+const DEVOTEE_LABEL_MAX = 5000;
+router.get('/admin/labels/devotees', async (req: Request, res: Response) => {
+  try {
+    const one = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+    const from = one(req.query.from), to = one(req.query.to), term = one(req.query.q).slice(0, 80), addrMode = one(req.query.address);
+    const day = (d: string) => /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(d));
+    if ((from && !day(from)) || (to && !day(to))) return res.status(400).json({ message: 'Choose valid dates.' });
+    if (from && to && from > to) return res.status(400).json({ message: 'The start date is after the end date.' });
+
+    const dcols = await columnsOf('devotees');
+    const has = (c: string) => dcols.some((x) => x.toLowerCase() === c);
+    const comm = pick(dcols, ['comm_address']), perm = pick(dcols, ['perm_address']), fallback = pick(dcols, ADDRESS_COLS), pin = pick(dcols, PINCODE_COLS);
+    const addrCols = [comm, perm, fallback].filter((c, i, l): c is string => !!c && l.indexOf(c) === i);
+    const nameSql = has('first_name') || has('last_name')
+      ? `TRIM(CONCAT(${has('first_name') ? "COALESCE(d.first_name,'')" : "''"}, ' ', ${has('last_name') ? "COALESCE(d.last_name,'')" : "''"}))`
+      : `''`;
+    const sel = ['d.id AS id', `${nameSql} AS name`, has('phone') ? 'd.phone AS phone' : "'' AS phone", has('email') ? 'd.email AS email' : "'' AS email",
+      has('city') ? 'd.city AS city' : "'' AS city", has('state') ? 'd.state AS state' : "'' AS state", has('created_at') ? 'd.created_at AS joined' : 'NULL AS joined',
+      pin ? `d.\`${pin}\` AS pin` : "'' AS pin", ...addrCols.map((c, i) => `d.\`${c}\` AS a${i}`)];
+    const where: string[] = []; const args: any[] = [];
+    if (from && has('created_at')) { where.push('d.created_at >= ?'); args.push(`${from} 00:00:00`); }
+    if (to && has('created_at')) { where.push('d.created_at < DATE_ADD(?, INTERVAL 1 DAY)'); args.push(`${to} 00:00:00`); }
+    if (term) {
+      const like = `%${term.replace(/[\\%_]/g, '\\$&')}%`;
+      const fields = [nameSql, has('phone') ? 'd.phone' : '', has('email') ? 'd.email' : '', has('city') ? 'd.city' : '', has('state') ? 'd.state' : '', 'd.id'].filter(Boolean);
+      where.push(`(${fields.map((f) => `${f} LIKE ?`).join(' OR ')})`); fields.forEach(() => args.push(like));
+    }
+    const anyAddr = addrCols.length ? `(${addrCols.map((c) => `COALESCE(TRIM(d.\`${c}\`),'') <> ''`).join(' OR ')})` : '0=1';
+    if (addrMode === 'with') where.push(anyAddr);
+    if (addrMode === 'without') where.push(`NOT ${anyAddr}`);
+    const [rows]: any = await db.query(
+      `SELECT ${sel.join(', ')} FROM devotees d ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY name ASC, d.id ASC LIMIT ?`, [...args, DEVOTEE_LABEL_MAX + 1]);
+    const capped = rows.length > DEVOTEE_LABEL_MAX;
+    const items: LabelRow[] = (rows as any[]).slice(0, DEVOTEE_LABEL_MAX).map((r) => {
+      // The communication address first, then the permanent one. The city, state and PIN are added only when the address does not already say them.
+      let text = '';
+      for (let i = 0; i < addrCols.length && !text; i++) text = cut(r[`a${i}`], 400);
+      const lines = text ? text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean) : [];
+      if (lines.length) {
+        const low = text.toLowerCase();
+        const extra = [[cut(r.city, 100), cut(r.state, 100)].filter((x) => x && !low.includes(x.toLowerCase())).join(', '), cut(r.pin, 12) && !low.includes(cut(r.pin, 12).toLowerCase()) ? `PIN ${cut(r.pin, 12)}` : ''].filter(Boolean);
+        lines.push(...extra);
+      }
+      return {
+        key: `dev-${r.id}`, source: 'online' as const, devotee_id: String(r.id || ''), name: cut(r.name, 200), phone: cut(r.phone, 30), email: cut(r.email, 150), address: lines.slice(0, 8),
+        item: '', category: '', amount: 0, receipt_no: '', date: dateOnly(r.joined) || '', valid_from: '', valid_to: '', months: null, membership: '',
+      };
+    });
+    res.setHeader('Cache-Control', 'no-store');
+    return res.json({ total: items.length, capped, limit: DEVOTEE_LABEL_MAX, items });
+  } catch (e: any) { return fail(res, e, 'Could not load the devotees to print.'); }
+});
+
 router.get('/admin/seva/options', optionsRoute('seva'));
 router.get('/admin/seva/list', listRoute('seva'));
 router.get('/admin/seva/export', exportRoute('seva'));
@@ -849,5 +1005,9 @@ router.get('/admin/magazine/export', exportRoute('magazine'));
 router.get('/admin/camp/options', optionsRoute('camp'));
 router.get('/admin/camp/list', listRoute('camp'));
 router.get('/admin/camp/export', exportRoute('camp'));
+
+// Used by the dashboards (dashboards.ts) to read the same combined online and on-site rows as the registers
+export { withManual, sqlFor };
+export type { Kind };
 
 export default router;

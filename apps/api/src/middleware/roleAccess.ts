@@ -3,7 +3,10 @@ import jwt from 'jsonwebtoken';
 import { pool } from '../db';
 import { config } from '../config';
 
-// Staff roles. superadmin and admin can open every page; the other four see only their own group of pages.
+// Staff roles. Only the super admin opens every page. Every other login (admin, gm, developer, website, payments, registration, sales)
+// opens only the pages the super admin ticked for it on the Users page.
+// Logins made before this rule, which have no ticked pages yet, keep the pages their role always had (an admin: every page) until a super admin sets them.
+export const SUPER = ['superadmin'];
 export const ADMINS = ['superadmin', 'admin'];
 const WEBSITE = [...ADMINS, 'website', 'editor', 'priest'];
 const PAYMENTS = [...ADMINS, 'payments'];
@@ -23,12 +26,18 @@ const WEBSITE_SLUGS = [
   'about-swami', 'about-ashramam', 'about-adhishtanam', 'about-vidyapitham', 'page-accommodation', 'page-contact',
   'discover-audio', 'discover-video', 'discover-album',
 ];
-const PAYMENT_SLUGS = ['payments-dashboard', 'seva-payments', 'payment-donations', 'payment-magazine', 'devotees', 'devotee-records'];
-const REGISTER_SLUGS = ['seva-register', 'donation-register', 'magazine-register', 'camp-register', 'printing-labels'];
+const PAYMENT_SLUGS = ['payments-dashboard', 'seva-payments', 'payment-donations', 'payment-magazine', 'payment-camps', 'devotees', 'devotee-records'];
+const REGISTER_SLUGS = [
+  'seva-register', 'seva-offline', 'donation-register', 'donation-offline', 'magazine-register', 'magazine-offline',
+  'camp-register', 'camp-offline', 'printing-labels',
+];
 const POS_SLUGS = ['pos', 'pos-new-sale', 'pos-sales', 'pos-items', 'pos-stock', 'pos-purchases', 'pos-suppliers', 'pos-adjustments', 'pos-reports'];
+// The dashboards for the general manager, the admin and the developer, and the 80G form page
+const DASH_SLUGS = ['dashboard-gm', 'dashboard-admin', 'dashboard-developer'];
+const FORM_SLUGS = ['80g-form'];
 
-// Every page a login can be given. The Users page is not in the list: only a super admin opens it.
-export const ALL_PAGE_SLUGS = ['dashboard', ...WEBSITE_SLUGS, ...PAYMENT_SLUGS, ...REGISTER_SLUGS, ...POS_SLUGS, 'settings'];
+// Every page a login can be given. The Users page ('users') lets a login manage its own team; the users API checks that itself.
+export const ALL_PAGE_SLUGS = ['dashboard', ...DASH_SLUGS, ...WEBSITE_SLUGS, ...PAYMENT_SLUGS, ...REGISTER_SLUGS, ...FORM_SLUGS, ...POS_SLUGS, 'settings', 'users'];
 
 const SEGMENT_SLUGS: Record<string, string[]> = {
   camps: ['camps'],
@@ -48,12 +57,22 @@ const SEGMENT_SLUGS: Record<string, string[]> = {
   settings: ['settings'],
 };
 
+// The dashboards API (dashboards.ts, mounted at /api/v1/dashboards): one endpoint per dashboard page
+const DASH_API: Record<string, string> = { gm: 'dashboard-gm', admin: 'dashboard-admin', developer: 'dashboard-developer' };
+const isDashApi = (p: string) => /^\/dashboards(\/|$)/.test(p.toLowerCase());
+
 // Which pages open an admin API. null = administrators only.
 export function slugsFor(rawPath: string): string[] | null {
   const p = rawPath.toLowerCase().replace(/\/+$/, '') || '/';
   if (/^\/camps\/admin\/(attendee\/|[^/]+\/attendees)/.test(p)) return null;
+  const d = /^\/dashboards\/([a-z]+)(\/|$)/.exec(p);
+  if (d) return DASH_API[d[1]] ? [DASH_API[d[1]]] : [];
   if (/^\/payments(\/|$)/.test(p)) return PAYMENT_SLUGS;
   if (/^\/devotees-admin(\/|$)/.test(p)) return ['devotees', 'devotee-records'];
+  if (/^\/registers\/admin\/labels(\/|$)/.test(p)) return ['printing-labels'];
+  // A register page opens only its own kind of register (the labels page has its own)
+  const reg = /^\/registers\/admin\/(seva|donation|magazine|camp)(\/|$)/.exec(p);
+  if (reg) return [`${reg[1]}-register`, `${reg[1]}-offline`];
   if (/^\/registers(\/|$)/.test(p)) return REGISTER_SLUGS;
   if (/^\/pos(\/|$)/.test(p)) return POS_SLUGS;
   const m = /^\/([a-z0-9-]+)\/admin(\/|$)/.exec(p);
@@ -61,7 +80,7 @@ export function slugsFor(rawPath: string): string[] | null {
   return null;
 }
 
-// page_access is stored as text holding a JSON list; empty or unreadable means "use the role's pages"
+// page_access is stored as text holding a JSON list; empty or unreadable means "no pages of its own" (the older role pages apply)
 export function parsePages(v: unknown): string[] | null {
   let a: unknown = v;
   if (typeof v === 'string') { try { a = JSON.parse(v); } catch { return null; } }
@@ -82,9 +101,11 @@ export async function pageCols(): Promise<string> {
 }
 
 // Who may call an admin API. Returns null for paths this guard does not cover (public and devotee APIs).
+// The dashboards are opened by their ticked page only (a super admin always); no role opens them by itself.
 export function rolesFor(rawPath: string): string[] | null {
   const p = rawPath.toLowerCase().replace(/\/+$/, '') || '/';
   if (/^\/users(\/|$)/.test(p)) return null; // the users router checks superadmin itself
+  if (isDashApi(p)) return SUPER;
   // Identity documents of camp attendees: admins only
   if (/^\/camps\/admin\/(attendee\/|[^/]+\/attendees)/.test(p)) return ADMINS;
   if (/^\/payments(\/|$)/.test(p)) return PAYMENTS;
@@ -133,12 +154,15 @@ export async function roleAccess(req: Request, res: Response, next: NextFunction
   try {
     const s = await staffFrom(req);
     if (!s) return res.status(401).json({ message: 'Please sign in again.' });
-    // A login with its own ticked pages is checked against those pages; every other login against its role.
-    // Administrators always have everything.
+    // Only a super admin always passes. A login with its own ticked pages is checked against those pages.
+    // A login without ticked pages (made before this rule) keeps what its role always had, except the dashboards, which need the tick.
     let ok: boolean;
-    if (ADMINS.includes(s.role)) ok = true;
-    else if (s.pages) { const need = slugsFor(req.path); ok = !!need && need.some((x) => s.pages!.includes(x)); }
-    else ok = allowed.includes(s.role);
+    if (SUPER.includes(s.role)) ok = true;
+    else if (s.pages || isDashApi(req.path)) {
+      const need = slugsFor(req.path);
+      // null = the administrator-only areas (for example identity documents), which an admin keeps
+      ok = need ? need.some((x) => (s.pages || []).includes(x)) : ADMINS.includes(s.role);
+    } else ok = allowed.includes(s.role);
     if (!ok) {
       console.warn(`[Access] ${s.email} (${s.role}) was refused ${req.method} ${req.path}`);
       return res.status(403).json({ message: 'Your login does not have access to this page.' });

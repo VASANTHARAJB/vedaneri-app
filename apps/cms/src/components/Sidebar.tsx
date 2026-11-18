@@ -5,6 +5,9 @@ import { ROLE_LABEL } from '../lib/access';
 
 export type NavTab =
   | 'overview'
+  | 'dashboard-gm'
+  | 'dashboard-admin'
+  | 'dashboard-developer'
   | 'site-dashboard'
   | 'sevas'
   | 'panchangam'
@@ -26,10 +29,15 @@ export type NavTab =
   | 'payment-sevas'
   | 'payment-donations'
   | 'payment-magazine'
+  | 'payment-camps'
   | 'seva-register'
   | 'donation-register'
   | 'magazine-register'
   | 'camp-register'
+  | 'seva-offline'
+  | 'donation-offline'
+  | 'magazine-offline'
+  | 'camp-offline'
   | 'address-labels'
   | 'devotee-details'
   | 'devotee-data'
@@ -94,18 +102,54 @@ const PAYMENTS: Item[] = [
   { id: 'payment-sevas', label: 'Seva Payments', icon: 'M9 14l6-6m-5.5.5h.01m4.99 5h.01M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16l3.5-2 3.5 2 3.5-2 3.5 2z' },
   { id: 'payment-donations', label: 'Donation Payments', icon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z' },
   { id: 'payment-magazine', label: 'Magazine Payments', icon: 'M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z' },
+  { id: 'payment-camps', label: 'Camp Payments', icon: 'M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z' },
   { id: 'devotee-details', label: 'Devotee Details', icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z' },
   { id: 'devotee-data', label: 'Devotee Records', icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' },
 ];
 
-// Registers: one list per area, as printed registers and for label printing
-const REGISTERS: Item[] = [
-  { id: 'seva-register', label: 'Seva Register', icon: 'M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253' },
-  { id: 'donation-register', label: 'Donation Register', icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z' },
-  { id: 'magazine-register', label: 'Magazine Register', icon: 'M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z' },
-  { id: 'camp-register', label: 'Camp Register', icon: 'M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z' },
+// Registers: each area has its register (online bookings) and an offline registration (taken at the counter)
+const OFFLINE_ICON = 'M12 4v16m8-8H4';
+type RegisterGroup = { title: string; icon: string; items: Item[] };
+const REGISTER_GROUPS: RegisterGroup[] = [
+  {
+    title: 'Seva Register',
+    icon: 'M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253',
+    items: [
+      { id: 'seva-register', label: 'Register', icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
+      { id: 'seva-offline', label: 'Offline Registration', icon: OFFLINE_ICON },
+    ],
+  },
+  {
+    title: 'Donation Register',
+    icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z',
+    items: [
+      { id: 'donation-register', label: 'Register', icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
+      { id: 'donation-offline', label: 'Offline Registration', icon: OFFLINE_ICON },
+    ],
+  },
+  {
+    title: 'Magazine Register',
+    icon: 'M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z',
+    items: [
+      { id: 'magazine-register', label: 'Register', icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
+      { id: 'magazine-offline', label: 'Offline Registration', icon: OFFLINE_ICON },
+    ],
+  },
+  {
+    title: 'Camp Register',
+    icon: 'M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z',
+    items: [
+      { id: 'camp-register', label: 'Register', icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
+      { id: 'camp-offline', label: 'Offline Registration', icon: OFFLINE_ICON },
+    ],
+  },
+];
+
+// Printing labels stays a single page under Registers
+const REGISTER_EXTRA: Item[] = [
   { id: 'address-labels', label: 'Printing Labels', icon: 'M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z' },
 ];
+const REGISTERS: Item[] = [...REGISTER_GROUPS.flatMap((g) => g.items), ...REGISTER_EXTRA];
 
 // Point of sale: counter billing, stock and purchasing for the ashram shop
 const POS: Item[] = [
@@ -118,6 +162,13 @@ const POS: Item[] = [
   { id: 'pos-suppliers', label: 'Suppliers', icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z' },
   { id: 'pos-adjustments', label: 'Stock Adjustments', icon: 'M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4' },
   { id: 'pos-reports', label: 'POS Reports', icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' },
+];
+
+// One dashboard each for the general manager, the admin and the developer; each shows only when its page is ticked for the login
+const DASHBOARDS: Item[] = [
+  { id: 'dashboard-gm', label: 'GM Report Dashboard', icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' },
+  { id: 'dashboard-admin', label: 'Admin Dashboard', icon: 'M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z' },
+  { id: 'dashboard-developer', label: 'Developer Dashboard', icon: 'M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4' },
 ];
 
 const USERS_ICON = 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z';
@@ -148,6 +199,8 @@ export default function Sidebar({ activeTab, onSelectTab, collapsed, onToggleCol
   const aboutActive = ABOUT.some((d) => d.id === activeTab);
   const [discoverOpen, setDiscoverOpen] = useState(true);
   const [aboutOpen, setAboutOpen] = useState(true);
+  // A register group opens by itself when its page is the current one; the person can still open or close it
+  const [regOpen, setRegOpen] = useState<Record<string, boolean>>({});
 
   const visible = (items: Item[]) => items.filter((i) => canSee(i.id as NavTab));
 
@@ -260,6 +313,14 @@ export default function Sidebar({ activeTab, onSelectTab, collapsed, onToggleCol
             </div>
           )}
 
+          {/* DASHBOARDS (GM, admin, developer) */}
+          {visible(DASHBOARDS).length > 0 && (
+            <div className="space-y-1">
+              <Heading text="Dashboards" collapsed={collapsed} />
+              <div className="space-y-0.5">{visible(DASHBOARDS).map(renderItem)}</div>
+            </div>
+          )}
+
           {/* WEBSITE MANAGEMENT */}
           {(visible(WEBSITE_TOP).length + visible(ABOUT).length + visible(WEBSITE_BOTTOM).length + visible(DISCOVER).length) > 0 && (
             <div className="space-y-1">
@@ -285,7 +346,22 @@ export default function Sidebar({ activeTab, onSelectTab, collapsed, onToggleCol
           {visible(REGISTERS).length > 0 && (
             <div className="space-y-1">
               <Heading text="Registers" collapsed={collapsed} />
-              <div className="space-y-0.5">{visible(REGISTERS).map(renderItem)}</div>
+              <div className="space-y-0.5">
+                {REGISTER_GROUPS.map((g) => {
+                  const items = visible(g.items);
+                  if (items.length === 0) return null;
+                  // Only one page of this area is allowed: show it as a plain row
+                  if (items.length === 1) return renderItem({ ...items[0], label: g.title, icon: g.icon });
+                  const active = items.some((i) => i.id === activeTab);
+                  const open = regOpen[g.title] ?? active;
+                  return (
+                    <React.Fragment key={g.title}>
+                      {renderGroup(g.title, g.icon, items, active, open, () => setRegOpen((o) => ({ ...o, [g.title]: !open })))}
+                    </React.Fragment>
+                  );
+                })}
+                {visible(REGISTER_EXTRA).map(renderItem)}
+              </div>
             </div>
           )}
 

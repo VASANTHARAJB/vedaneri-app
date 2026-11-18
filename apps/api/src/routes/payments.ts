@@ -192,7 +192,7 @@ const SEVA_ROWS = `
 const CATEGORIES = ['seva', 'corpus'] as const;
 const SEVA_SORT: Record<string, string> = {
   date: 's.paid_at DESC, s.id DESC', oldest: 's.paid_at ASC, s.id ASC',
-  amount_desc: 's.amount DESC, s.id DESC', amount_asc: 's.amount ASC, s.id DESC', name: 's.name ASC, s.paid_at DESC',
+  amount_desc: 'CAST(s.amount AS DECIMAL(14,2)) DESC, s.id DESC', amount_asc: 'CAST(s.amount AS DECIMAL(14,2)) ASC, s.id DESC', name: 's.name ASC, s.paid_at DESC',
 };
 
 function sevaFilters(q: Request['query'], withText = true) {
@@ -236,7 +236,7 @@ const sevaRow = (r: any) => ({
 
 router.get('/admin/seva/summary', async (req, res) => {
   try {
-    const f = sevaFilters(req.query, false);
+    const f = sevaFilters(req.query, true); // the figures follow the search words too
     if ('error' in f) return res.status(400).json({ message: f.error });
     // The same filters without the payment dates: used for the upcoming sevas, which are about the seva date, not the payment date
     const fa = sevaFilters({ ...req.query, from: '', to: '' }, false);
@@ -250,7 +250,7 @@ router.get('/admin/seva/summary', async (req, res) => {
     let prev: Promise<any[]> | null = null;
     if (from && to && dayNum(to) >= dayNum(from)) {
       const len = dayNum(to) - dayNum(from) + 1;
-      const pf = sevaFilters({ ...req.query, from: dayStr(dayNum(from) - len), to: dayStr(dayNum(from) - 1) }, false);
+      const pf = sevaFilters({ ...req.query, from: dayStr(dayNum(from) - len), to: dayStr(dayNum(from) - 1) }, true);
       if (!('error' in pf)) prev = run(`SELECT COUNT(*) n, COALESCE(SUM(s.amount),0) total FROM (${SEVA_ROWS}) s ${add(pf, `s.status = 'PAID'`)}`, pf.args);
     }
 
@@ -365,7 +365,7 @@ const DON_ROWS = `
     FROM donation_booking b LEFT JOIN devotees v ON v.id = b.devotee_id`;
 const DON_SORT: Record<string, string> = {
   date: 'd.paid_at DESC, d.id DESC', oldest: 'd.paid_at ASC, d.id ASC',
-  amount_desc: 'd.amount DESC, d.id DESC', amount_asc: 'd.amount ASC, d.id DESC', name: 'd.name ASC, d.paid_at DESC',
+  amount_desc: 'CAST(d.amount AS DECIMAL(14,2)) DESC, d.id DESC', amount_asc: 'CAST(d.amount AS DECIMAL(14,2)) ASC, d.id DESC', name: 'd.name ASC, d.paid_at DESC',
 };
 
 function donFilters(q: Request['query'], withText = true) {
@@ -398,7 +398,7 @@ const donRow = (r: any) => ({
 
 router.get('/admin/donation/summary', async (req, res) => {
   try {
-    const f = donFilters(req.query, false);
+    const f = donFilters(req.query, true); // the figures follow the search words too
     if ('error' in f) return res.status(400).json({ message: f.error });
     const add = (w: { sql: string }, cond: string) => (w.sql ? `${w.sql} AND ${cond}` : `WHERE ${cond}`);
     const paidOnly = add(f, `d.status = 'PAID'`);
@@ -408,7 +408,7 @@ router.get('/admin/donation/summary', async (req, res) => {
     let prev: Promise<any[]> | null = null;
     if (from && to && dayNum(to) >= dayNum(from)) {
       const len = dayNum(to) - dayNum(from) + 1;
-      const pf = donFilters({ ...req.query, from: dayStr(dayNum(from) - len), to: dayStr(dayNum(from) - 1) }, false);
+      const pf = donFilters({ ...req.query, from: dayStr(dayNum(from) - len), to: dayStr(dayNum(from) - 1) }, true);
       if (!('error' in pf)) prev = run(`SELECT COUNT(*) n, COALESCE(SUM(d.amount),0) total FROM (${DON_ROWS}) d ${add(pf, `d.status = 'PAID'`)}`, pf.args);
     }
 
@@ -522,7 +522,7 @@ const MAG_ROWS = `
 const DELIVERIES = ['print', 'digital', 'both'] as const;
 const MAG_SORT: Record<string, string> = {
   date: 'g.paid_at DESC, g.id DESC', oldest: 'g.paid_at ASC, g.id ASC',
-  amount_desc: 'g.amount DESC, g.id DESC', amount_asc: 'g.amount ASC, g.id DESC', name: 'g.name ASC, g.paid_at DESC',
+  amount_desc: 'CAST(g.amount AS DECIMAL(14,2)) DESC, g.id DESC', amount_asc: 'CAST(g.amount AS DECIMAL(14,2)) ASC, g.id DESC', name: 'g.name ASC, g.paid_at DESC',
   ending: 'g.end_date ASC, g.id DESC',
 };
 
@@ -563,7 +563,7 @@ const magRow = (r: any) => ({
 
 router.get('/admin/magazine/summary', async (req, res) => {
   try {
-    const f = magFilters(req.query, false);
+    const f = magFilters(req.query, true); // the figures follow the search words too
     if ('error' in f) return res.status(400).json({ message: f.error });
     // The same filters without the payment dates: the subscription figures are about the subscription dates, not the payment dates
     const fa = magFilters({ ...req.query, from: '', to: '' }, false);
@@ -576,7 +576,7 @@ router.get('/admin/magazine/summary', async (req, res) => {
     let prev: Promise<any[]> | null = null;
     if (from && to && dayNum(to) >= dayNum(from)) {
       const len = dayNum(to) - dayNum(from) + 1;
-      const pf = magFilters({ ...req.query, from: dayStr(dayNum(from) - len), to: dayStr(dayNum(from) - 1) }, false);
+      const pf = magFilters({ ...req.query, from: dayStr(dayNum(from) - len), to: dayStr(dayNum(from) - 1) }, true);
       if (!('error' in pf)) prev = run(`SELECT COUNT(*) n, COALESCE(SUM(g.amount),0) total FROM (${MAG_ROWS}) g ${add(pf, `g.status = 'PAID'`)}`, pf.args);
     }
 
@@ -676,6 +676,179 @@ router.get('/admin/magazine/export', async (req, res) => {
     }
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', 'attachment; filename="magazine-payments.csv"');
+    return res.send('﻿' + lines.join('\r\n'));
+  } catch (e: any) { return fail(res, e, 'Could not make the file.'); }
+});
+
+// =====================================================================================================
+// Camp payments: every camp fee with the registrant, the camp, how many people, and the Razorpay ids.
+// Only registrations that carry a fee are listed (free camps have no payment). Category = when the camp is:
+// "upcoming" (not started), "ongoing", "past". Aadhaar, ID documents and photos are never read here.
+// =====================================================================================================
+const CAMP_ROWS = `
+  SELECT r.id AS id, r.devotee_id AS devotee_id,
+         COALESCE(NULLIF(TRIM(CONCAT(COALESCE(r.first_name,''),' ',COALESCE(r.last_name,''))),''), NULLIF(r.name,''),
+                  TRIM(CONCAT(COALESCE(v.first_name,''),' ',COALESCE(v.last_name,'')))) AS name,
+         COALESCE(NULLIF(r.email,''), v.email) AS email, COALESCE(NULLIF(r.phone,''), v.phone) AS phone,
+         COALESCE(NULLIF(r.city,''), v.city) AS city, COALESCE(NULLIF(r.state,''), v.state) AS state,
+         r.camp_id AS camp_id, COALESCE(cm.title_en, 'Camp') AS camp,
+         cm.start_date AS camp_start, cm.end_date AS camp_end,
+         CASE WHEN cm.start_date IS NOT NULL AND cm.start_date > CURDATE() THEN 'upcoming'
+              WHEN cm.end_date IS NOT NULL AND cm.end_date >= CURDATE() THEN 'ongoing'
+              ELSE 'past' END AS category,
+         r.adults AS adults, r.children AS children, r.members AS people,
+         r.amount AS amount,
+         CASE r.payment_status WHEN 'PAID' THEN 'PAID' WHEN 'FAILED' THEN 'FAILED' ELSE 'PENDING' END AS status,
+         r.status AS registration, r.razorpay_order_id AS order_id, r.razorpay_payment_id AS payment_id, r.created_at AS paid_at
+    FROM camp_registrations r LEFT JOIN camps cm ON cm.id = r.camp_id LEFT JOIN devotees v ON v.id = r.devotee_id
+   WHERE r.amount > 0 AND r.payment_status <> 'NONE'`;
+const CAMP_CATEGORIES = ['upcoming', 'ongoing', 'past'] as const;
+const CAMP_SORT: Record<string, string> = {
+  date: 'k.paid_at DESC, k.id DESC', oldest: 'k.paid_at ASC, k.id ASC',
+  amount_desc: 'CAST(k.amount AS DECIMAL(14,2)) DESC, k.id DESC', amount_asc: 'CAST(k.amount AS DECIMAL(14,2)) ASC, k.id DESC', name: 'k.name ASC, k.paid_at DESC',
+};
+
+function campFilters(q: Request['query'], withText = true) {
+  const where: string[] = [];
+  const args: any[] = [];
+  const category = one(q.category);
+  if (category) { if (!(CAMP_CATEGORIES as readonly string[]).includes(category)) return { error: 'Unknown category.' } as const; where.push('k.category = ?'); args.push(category); }
+  const status = one(q.status).toUpperCase();
+  if (status) { if (!(STATUSES as readonly string[]).includes(status)) return { error: 'Unknown status.' } as const; where.push('k.status = ?'); args.push(status); }
+  const camp = one(q.camp).slice(0, 255);
+  if (camp) { where.push('k.camp = ?'); args.push(camp); }
+  const from = one(q.from), to = one(q.to);
+  if (from) { if (!realDay(from)) return { error: 'The "from" date is not valid.' } as const; where.push('k.paid_at >= ?'); args.push(`${from} 00:00:00`); }
+  if (to) { if (!realDay(to)) return { error: 'The "to" date is not valid.' } as const; where.push('k.paid_at < DATE_ADD(?, INTERVAL 1 DAY)'); args.push(`${to} 00:00:00`); }
+  const text = withText ? one(q.q).slice(0, 80) : '';
+  if (text) {
+    const like = `%${text.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+    where.push('(k.name LIKE ? OR k.email LIKE ? OR k.phone LIKE ? OR k.devotee_id LIKE ? OR k.camp LIKE ? OR k.order_id LIKE ? OR k.payment_id LIKE ?)');
+    args.push(like, like, like, like, like, like, like);
+  }
+  return { sql: where.length ? `WHERE ${where.join(' AND ')}` : '', args } as const;
+}
+
+const campRow = (r: any) => ({
+  id: r.id, devotee_id: r.devotee_id, name: r.name || '', email: r.email, phone: r.phone, city: r.city, state: r.state,
+  camp: r.camp, category: r.category, camp_start: dateOnly(r.camp_start), camp_end: dateOnly(r.camp_end),
+  adults: Number(r.adults) || 0, children: Number(r.children) || 0, people: Number(r.people) || 0,
+  amount: money(r.amount), currency: 'INR', status: r.status, registration: r.registration,
+  order_id: r.order_id, payment_id: r.payment_id, paid_at: r.paid_at instanceof Date ? r.paid_at.toISOString() : r.paid_at,
+});
+
+router.get('/admin/camp/summary', async (req, res) => {
+  try {
+    const f = campFilters(req.query, true); // the figures follow the search words too
+    if ('error' in f) return res.status(400).json({ message: f.error });
+    // The same filters without the payment dates: used for the camps ahead, which are about the camp date, not the payment date
+    const fa = campFilters({ ...req.query, from: '', to: '' }, true);
+    if ('error' in fa) return res.status(400).json({ message: fa.error });
+    const add = (w: { sql: string }, cond: string) => (w.sql ? `${w.sql} AND ${cond}` : `WHERE ${cond}`);
+    const paidOnly = add(f, `k.status = 'PAID'`);
+    const run = (sql: string, args: any[] = f.args) => db.query(sql, args).then((r: any) => r[0] as any[]);
+    const from = one(req.query.from), to = one(req.query.to);
+
+    let prev: Promise<any[]> | null = null;
+    if (from && to && dayNum(to) >= dayNum(from)) {
+      const len = dayNum(to) - dayNum(from) + 1;
+      const pf = campFilters({ ...req.query, from: dayStr(dayNum(from) - len), to: dayStr(dayNum(from) - 1) }, true);
+      if (!('error' in pf)) prev = run(`SELECT COUNT(*) n, COALESCE(SUM(k.amount),0) total FROM (${CAMP_ROWS}) k ${add(pf, `k.status = 'PAID'`)}`, pf.args);
+    }
+
+    const [matrix, daily, campTable, devotees, payers, repeat, options, states, ranges, activity, ahead, follow, health, people, prevRows] = await Promise.all([
+      run(`SELECT k.category, k.status, COUNT(*) n, COALESCE(SUM(k.amount),0) total FROM (${CAMP_ROWS}) k ${f.sql} GROUP BY k.category, k.status`),
+      run(`SELECT DATE_FORMAT(k.paid_at,'%Y-%m-%d') d, k.category, COUNT(*) n, COALESCE(SUM(k.amount),0) total FROM (${CAMP_ROWS}) k ${paidOnly} GROUP BY d, k.category ORDER BY d`),
+      // One line per camp: every attempt, how many were paid, the money and the people
+      run(`SELECT k.camp, k.category, MAX(k.camp_start) camp_start, COUNT(*) n,
+                  SUM(CASE WHEN k.status = 'PAID' THEN 1 ELSE 0 END) paid_n,
+                  COALESCE(SUM(CASE WHEN k.status = 'PAID' THEN k.amount ELSE 0 END),0) paid_total,
+                  COALESCE(SUM(CASE WHEN k.status = 'PAID' THEN k.people ELSE 0 END),0) paid_people,
+                  SUM(CASE WHEN k.status = 'FAILED' THEN 1 ELSE 0 END) failed_n,
+                  SUM(CASE WHEN k.status = 'PENDING' THEN 1 ELSE 0 END) pending_n
+             FROM (${CAMP_ROWS}) k ${f.sql} GROUP BY k.camp, k.category ORDER BY paid_total DESC, n DESC LIMIT 25`),
+      run(`SELECT k.devotee_id, MAX(k.name) name, MAX(k.phone) phone, COUNT(*) n, COALESCE(SUM(k.amount),0) total, MAX(k.paid_at) last_at
+             FROM (${CAMP_ROWS}) k ${paidOnly} GROUP BY k.devotee_id ORDER BY total DESC LIMIT 8`),
+      run(`SELECT COUNT(DISTINCT k.devotee_id) n FROM (${CAMP_ROWS}) k ${paidOnly}`),
+      run(`SELECT COUNT(*) n FROM (SELECT k.devotee_id FROM (${CAMP_ROWS}) k ${paidOnly} GROUP BY k.devotee_id HAVING COUNT(*) > 1) r`),
+      db.query(`SELECT DISTINCT COALESCE(cm.title_en, 'Camp') AS title FROM camp_registrations r LEFT JOIN camps cm ON cm.id = r.camp_id WHERE r.amount > 0 AND r.payment_status <> 'NONE' ORDER BY title LIMIT 300`).then((r: any) => r[0] as any[]),
+      run(`SELECT COALESCE(NULLIF(k.state,''), 'Not given') st, COUNT(*) n, COALESCE(SUM(k.amount),0) total FROM (${CAMP_ROWS}) k ${paidOnly} GROUP BY st ORDER BY total DESC LIMIT 8`),
+      run(`SELECT CASE WHEN k.amount <= 500 THEN 1 WHEN k.amount <= 1000 THEN 2 WHEN k.amount <= 2500 THEN 3 WHEN k.amount <= 5000 THEN 4 ELSE 5 END b, COUNT(*) n, COALESCE(SUM(k.amount),0) total
+             FROM (${CAMP_ROWS}) k ${paidOnly} GROUP BY b ORDER BY b`),
+      run(`SELECT DAYOFWEEK(k.paid_at) - 1 w, FLOOR(HOUR(k.paid_at) / 4) b, COUNT(*) n FROM (${CAMP_ROWS}) k ${paidOnly} GROUP BY w, b`),
+      // Camps that have not ended yet, with the paid registrations and people so far
+      run(`SELECT k.camp, MAX(k.camp_start) camp_start, MAX(k.camp_end) camp_end, COUNT(*) n, COALESCE(SUM(k.people),0) people, COALESCE(SUM(k.amount),0) total
+             FROM (${CAMP_ROWS}) k ${add(fa, `k.status = 'PAID' AND k.category IN ('upcoming','ongoing') AND k.registration <> 'CANCELLED'`)}
+             GROUP BY k.camp ORDER BY camp_start ASC LIMIT 8`, fa.args),
+      run(`SELECT k.* FROM (${CAMP_ROWS}) k ${add(f, `k.status <> 'PAID'`)} ORDER BY k.paid_at DESC LIMIT 8`),
+      run(`SELECT SUM(CASE WHEN k.status = 'PAID' AND (k.payment_id IS NULL OR k.payment_id = '') THEN 1 ELSE 0 END) no_payment_id,
+                  SUM(CASE WHEN k.status = 'PAID' AND k.registration = 'CANCELLED' THEN 1 ELSE 0 END) paid_cancelled,
+                  SUM(CASE WHEN k.status = 'PAID' AND k.registration <> 'REGISTERED' AND k.registration <> 'CANCELLED' THEN 1 ELSE 0 END) paid_not_registered,
+                  SUM(CASE WHEN k.status = 'PENDING' AND k.paid_at < DATE_SUB(NOW(), INTERVAL 1 DAY) THEN 1 ELSE 0 END) stuck_pending
+             FROM (${CAMP_ROWS}) k ${f.sql}`),
+      run(`SELECT COALESCE(SUM(k.people),0) people, COALESCE(SUM(k.adults),0) adults, COALESCE(SUM(k.children),0) children FROM (${CAMP_ROWS}) k ${paidOnly}`),
+      prev ? prev : Promise.resolve([] as any[]),
+    ]);
+
+    const cellOf = (c: string, st: string) => { const r = matrix.find((x: any) => x.category === c && x.status === st); return { count: r ? Number(r.n) : 0, amount: r ? money(r.total) : 0 }; };
+    const categories = CAMP_CATEGORIES.map((c) => ({ category: c, paid: cellOf(c, 'PAID'), pending: cellOf(c, 'PENDING'), failed: cellOf(c, 'FAILED') }));
+    const sum = (k: 'paid' | 'pending' | 'failed') => ({ count: categories.reduce((a, c) => a + c[k].count, 0), amount: money(categories.reduce((a, c) => a + c[k].amount, 0)) });
+    const paid = sum('paid'), pending = sum('pending'), failed = sum('failed');
+    const attempts = paid.count + pending.count + failed.count;
+    const pv = prevRows[0] as any;
+    const h = (health[0] || {}) as any;
+    const pp = (people[0] || {}) as any;
+    const RANGE_LABEL = ['Up to ₹500', '₹501 to ₹1,000', '₹1,001 to ₹2,500', '₹2,501 to ₹5,000', 'Above ₹5,000'];
+    return res.json({
+      paid, pending, failed,
+      average: paid.count ? money(paid.amount / paid.count) : 0,
+      successRate: attempts ? Math.round((paid.count / attempts) * 1000) / 10 : 0,
+      payers: Number((payers[0] as any)?.n || 0), repeatDevotees: Number((repeat[0] as any)?.n || 0),
+      people: { total: Number(pp.people || 0), adults: Number(pp.adults || 0), children: Number(pp.children || 0) },
+      previous: pv ? { count: Number(pv.n), amount: money(pv.total) } : null,
+      categories,
+      daily: daily.map((r: any) => ({ day: r.d, source: r.category, count: Number(r.n), amount: money(r.total) })),
+      campTable: campTable.map((r: any) => ({ camp: r.camp, category: r.category, start: dateOnly(r.camp_start), registrations: Number(r.n), paid: Number(r.paid_n), amount: money(r.paid_total), people: Number(r.paid_people), failed: Number(r.failed_n), pending: Number(r.pending_n) })),
+      top: campTable.filter((r: any) => Number(r.paid_n) > 0).slice(0, 8).map((r: any) => ({ camp: r.camp, category: r.category, count: Number(r.paid_n), people: Number(r.paid_people), amount: money(r.paid_total) })),
+      devotees: devotees.map((r: any) => ({ devotee_id: r.devotee_id, name: r.name || '', phone: r.phone || '', count: Number(r.n), amount: money(r.total), last: r.last_at instanceof Date ? r.last_at.toISOString() : r.last_at })),
+      states: states.map((r: any) => ({ state: r.st, count: Number(r.n), amount: money(r.total) })),
+      ranges: RANGE_LABEL.map((label, i) => { const r = ranges.find((x: any) => Number(x.b) === i + 1); return { label, count: r ? Number(r.n) : 0, amount: r ? money(r.total) : 0 }; }),
+      activity: activity.map((r: any) => ({ weekday: Number(r.w), block: Number(r.b), count: Number(r.n) })),
+      ahead: ahead.map((r: any) => ({ camp: r.camp, start: dateOnly(r.camp_start), end: dateOnly(r.camp_end), count: Number(r.n), people: Number(r.people), amount: money(r.total) })),
+      followUps: follow.map((r: any) => { const x = campRow(r); return { id: x.id, devotee_id: x.devotee_id, name: x.name, phone: x.phone, camp: x.camp, category: x.category, amount: x.amount, status: x.status, paid_at: x.paid_at }; }),
+      health: { paidNoPaymentId: Number(h.no_payment_id || 0), paidCancelled: Number(h.paid_cancelled || 0), paidNotRegistered: Number(h.paid_not_registered || 0), stuckPending: Number(h.stuck_pending || 0) },
+      camps: options.map((r: any) => r.title).filter(Boolean),
+    });
+  } catch (e: any) { return fail(res, e, 'Could not load the camp summary.'); }
+});
+
+router.get('/admin/camp/list', async (req, res) => {
+  try {
+    const f = campFilters(req.query);
+    if ('error' in f) return res.status(400).json({ message: f.error });
+    const order = CAMP_SORT[one(req.query.sort)] || CAMP_SORT.date;
+    const limit = Math.min(100, Math.max(5, Number(req.query.limit) || 25));
+    const page = Math.max(1, Math.floor(Number(req.query.page)) || 1);
+    const [[cnt]]: any = await db.query(`SELECT COUNT(*) n FROM (${CAMP_ROWS}) k ${f.sql}`, f.args);
+    const [rows]: any = await db.query(`SELECT k.* FROM (${CAMP_ROWS}) k ${f.sql} ORDER BY ${order} LIMIT ? OFFSET ?`, [...f.args, limit, (page - 1) * limit]);
+    return res.json({ total: Number(cnt.n), page, limit, items: rows.map(campRow) });
+  } catch (e: any) { return fail(res, e, 'Could not load the camp payments.'); }
+});
+
+router.get('/admin/camp/export', async (req, res) => {
+  try {
+    const f = campFilters(req.query);
+    if ('error' in f) return res.status(400).json({ message: f.error });
+    const order = CAMP_SORT[one(req.query.sort)] || CAMP_SORT.date;
+    const [rows]: any = await db.query(`SELECT k.* FROM (${CAMP_ROWS}) k ${f.sql} ORDER BY ${order} LIMIT 20000`, f.args);
+    const head = ['Payment date', 'Registrant', 'Phone', 'Email', 'City', 'State', 'Camp', 'When', 'Camp start', 'Camp end', 'People', 'Adults', 'Children', 'Amount (INR)', 'Payment status', 'Registration', 'Razorpay order id', 'Razorpay payment id (transaction id)'];
+    const lines = [head.map(cell).join(',')];
+    for (const raw of rows) {
+      const r = campRow(raw);
+      lines.push([raw.paid_at, r.name, r.phone, r.email, r.city, r.state, r.camp, r.category, r.camp_start, r.camp_end, r.people, r.adults, r.children, r.amount, r.status, r.registration, r.order_id, r.payment_id].map(cell).join(','));
+    }
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="camp-payments.csv"');
     return res.send('﻿' + lines.join('\r\n'));
   } catch (e: any) { return fail(res, e, 'Could not make the file.'); }
 });

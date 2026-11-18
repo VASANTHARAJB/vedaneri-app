@@ -2,10 +2,25 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { API, CSS, Notice, authHeader, failText, readJson, useFlash } from './DiscoverKit';
 import { ActivityDots, Columns, Delta, Donut, HBars, LineChart, PDX_CSS, RevenueChart, inr, makeBuckets, rangeOf, short, when, ymd } from './PaymentCharts';
 import type { DailyRow, Gran, Money, Preset } from './PaymentCharts';
+import { useAuth } from '../lib/auth';
+import { loadLogo, pageList } from './reportKit';
+import { buildMagazineReportXlsx } from './magazineReportXlsx';
+import logoVspt from '@images/logo-vspt.png';
+import logoSdss from '@images/logo-sdss.png';
 
 // API points at .../api/v1/discover. The Magazine payments API is .../api/v1/payments/admin/magazine
 const API_BASE = String(API).replace(/\/discover\/?$/, '');
 const MAG = `${API_BASE}/payments/admin/magazine`;
+
+// The name and address printed at the top of the downloaded report (the two logos come from apps/web/public/images)
+const ORG_NAME = 'SRI DAKSHINAMURTI SEVA SAMITI';
+const ORG_ADDRESS: string[] = [
+  'Chatrapatti Road, Vedapuri, Theni, Tamilnadu, India - 625 531',
+  'Phone: 97517 51910, 94430 51910',
+];
+const EXPORT_LIMIT = 20000; // the most rows the server sends in one download
+const PAGE_SIZES = [10, 25, 50, 100];
+const ddmmyyyy = (d: string) => (/^\d{4}-\d{2}-\d{2}$/.test(d) ? `${d.slice(8, 10)}${d.slice(5, 7)}${d.slice(0, 4)}` : '');
 
 type Cat = { category: string; paid: Money; pending: Money; failed: Money };
 type Summary = {
@@ -92,9 +107,12 @@ function Stat({ label, value, sub, color }: { label: string; value: string; sub?
 
 export default function MagazinePayments() {
   const { notice, flash, clear } = useFlash();
-  const [preset, setPreset] = useState<Preset>('30');
-  const [from, setFrom] = useState(rangeOf('30').from);
-  const [to, setTo] = useState(rangeOf('30').to);
+  const auth = useAuth() as any;
+  // The page opens on the current month
+  const [preset, setPreset] = useState<Preset>('month');
+  const [from, setFrom] = useState(rangeOf('month').from);
+  const [to, setTo] = useState(rangeOf('month').to);
+  // Delivery, payment, subscription, paid how, plan, sort and search filter the payments table (and the download). The charts follow the period only.
   const [category, setCategory] = useState('');
   const [status, setStatus] = useState('');
   const [plan, setPlan] = useState('');
@@ -104,17 +122,20 @@ export default function MagazinePayments() {
   const [q, setQ] = useState('');
   const [qNow, setQNow] = useState('');
   const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(25);
   const [gran, setGran] = useState<Gran>('day');
   const [mode, setMode] = useState<'bars' | 'area'>('bars');
   const [summary, setSummary] = useState<Summary | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
   const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState('');
+  const [loadingSum, setLoadingSum] = useState(true);
+  const [loadingList, setLoadingList] = useState(true);
+  const [errSum, setErrSum] = useState('');
+  const [errList, setErrList] = useState('');
   const [open, setOpen] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
-  const LIMIT = 25;
-  const seq = useRef(0);
+  const seqSum = useRef(0);
+  const seqList = useRef(0);
   const tableRef = useRef<HTMLElement>(null);
 
   // The search box waits a moment after typing before it asks the server
@@ -123,39 +144,64 @@ export default function MagazinePayments() {
     return () => clearTimeout(t);
   }, [q]);
 
-  const qs = useCallback((withText: boolean) => {
+  const period = useCallback(() => {
     const p = new URLSearchParams();
     if (from) p.set('from', from);
     if (to) p.set('to', to);
+    return p;
+  }, [from, to]);
+
+  const tableParams = useCallback(() => {
+    const p = period();
     if (category) p.set('category', category);
     if (status) p.set('status', status);
     if (plan) p.set('plan', plan);
     if (membership) p.set('membership', membership);
     if (payHow) p.set('mode', payHow);
-    if (withText && qNow) p.set('q', qNow);
+    if (qNow) p.set('q', qNow);
     return p;
-  }, [from, to, category, status, plan, membership, payHow, qNow]);
+  }, [period, category, status, plan, membership, payHow, qNow]);
 
-  const load = useCallback(async () => {
-    const mine = ++seq.current;
-    setLoading(true); setErr('');
+  // Figures and charts: the dates only
+  const loadSummary = useCallback(async () => {
+    const mine = ++seqSum.current;
+    setLoadingSum(true); setErrSum('');
     try {
-      const sp = qs(true); // the figures and charts follow the dates, the filters and the search words
-      const lp = qs(true); lp.set('page', String(page)); lp.set('limit', String(LIMIT)); lp.set('sort', sort);
-      const [a, b] = await Promise.all([
-        fetch(`${MAG}/summary?${sp}`, { headers: authHeader(), cache: 'no-store' }),
-        fetch(`${MAG}/list?${lp}`, { headers: authHeader(), cache: 'no-store' }),
-      ]);
-      const [da, db] = await Promise.all([readJson(a), readJson(b)]);
-      if (!a.ok) throw new Error(failText(da, `Could not load the summary (${a.status}).`));
-      if (!b.ok) throw new Error(failText(db, `Could not load the payments (${b.status}).`));
-      if (mine !== seq.current) return; // a newer request has started
-      setSummary(da); setRows((db.items || []).map((r: any) => ({ ...r, category: r.delivery }))); setTotal(db.total || 0);
+      const res = await fetch(`${MAG}/summary?${period()}`, { headers: authHeader(), cache: 'no-store' });
+      const d = await readJson(res);
+      if (!res.ok) throw new Error(failText(d, `Could not load the summary (${res.status}).`));
+      if (mine !== seqSum.current) return; // a newer request has started
+      setSummary(d);
     } catch (e: any) {
-      if (mine === seq.current) setErr(`${e?.message || 'Could not load the magazine payments.'} [${MAG}]`);
-    } finally { if (mine === seq.current) setLoading(false); }
-  }, [qs, page, sort]);
-  useEffect(() => { load(); }, [load]);
+      if (mine === seqSum.current) setErrSum(`${e?.message || 'Could not load the magazine payments.'} [${MAG}]`);
+    } finally { if (mine === seqSum.current) setLoadingSum(false); }
+  }, [period]);
+
+  // The payments table: the dates plus the filters, the sort and the search
+  const loadList = useCallback(async () => {
+    const mine = ++seqList.current;
+    setLoadingList(true); setErrList('');
+    try {
+      const lp = tableParams(); lp.set('page', String(page)); lp.set('limit', String(limit)); lp.set('sort', sort);
+      const res = await fetch(`${MAG}/list?${lp}`, { headers: authHeader(), cache: 'no-store' });
+      const d = await readJson(res);
+      if (!res.ok) throw new Error(failText(d, `Could not load the payments (${res.status}).`));
+      if (mine !== seqList.current) return;
+      setRows((d.items || []).map((r: any) => ({ ...r, category: r.delivery }))); setTotal(d.total || 0);
+    } catch (e: any) {
+      if (mine === seqList.current) setErrList(`${e?.message || 'Could not load the magazine payments.'} [${MAG}]`);
+    } finally { if (mine === seqList.current) setLoadingList(false); }
+  }, [tableParams, page, limit, sort]);
+
+  useEffect(() => { loadSummary(); }, [loadSummary]);
+  useEffect(() => { loadList(); }, [loadList]);
+
+  const err = errSum || errList;
+  const loading = loadingSum || loadingList;
+  const retry = () => { loadSummary(); loadList(); };
+
+  // Takes the person to the payments table (after a filter was set from a card above)
+  const goToTable = () => setTimeout(() => tableRef.current?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }), 50);
 
   function choose(p: Preset) {
     setPreset(p); setPage(1);
@@ -163,22 +209,46 @@ export default function MagazinePayments() {
     setGran(p === 'year' || p === 'all' ? 'month' : 'day');
   }
 
+  // One Excel file with everything: a Summary sheet and a sheet listing every subscription that matches the filters (not only this page)
   async function download() {
     setBusy(true);
     try {
-      const p = qs(true); p.set('sort', sort);
-      const res = await fetch(`${MAG}/export?${p}`, { headers: authHeader() });
-      if (!res.ok) { flash('err', failText(await readJson(res), 'Could not make the file.')); return; }
-      const url = URL.createObjectURL(await res.blob());
+      const sp = tableParams(); sp.set('sort', sort);
+      const [sumRes, csvRes, left, right] = await Promise.all([
+        fetch(`${MAG}/summary?${period()}`, { headers: authHeader(), cache: 'no-store' }).then(async (r) => {
+          const d = await readJson(r);
+          if (!r.ok) throw new Error(failText(d, 'Could not make the report.'));
+          return d as Summary;
+        }),
+        fetch(`${MAG}/export?${sp}`, { headers: authHeader(), cache: 'no-store' }).then(async (r) => {
+          if (!r.ok) throw new Error(failText(await readJson(r), 'Could not make the report.'));
+          return r.text();
+        }),
+        loadLogo(logoVspt),
+        loadLogo(logoSdss),
+      ]);
+      const bits = [category ? catLabel(category) : 'Print and digital', status ? STATUS_LABEL[status] || status : 'All payments', plan ? `Plan: ${plan}` : 'All plans'];
+      if (membership) bits.push(`Subscription: ${membership === 'ACTIVE' ? 'Active' : 'Expired'}`);
+      if (payHow) bits.push(payHow === 'online' ? 'Online only' : 'Offline only');
+      if (qNow) bits.push(`Search: "${qNow}"`);
+      const bytes = await buildMagazineReportXlsx({
+        org: { name: ORG_NAME, address: ORG_ADDRESS },
+        from, to, generatedAt: new Date(), generatedBy: String(auth?.user?.email || auth?.user?.full_name || ''),
+        filtersText: bits.join(', '), summary: sumRes as any, paymentsCsv: csvRes, exportLimit: EXPORT_LIMIT,
+        catLabel, logos: { left, right },
+      });
+      const url = URL.createObjectURL(new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
       const a = document.createElement('a');
-      a.href = url; a.download = `magazine-payments-${ymd(new Date())}.csv`;
+      const span = from || to ? `-${ddmmyyyy(from) || 'start'}-to-${ddmmyyyy(to) || ddmmyyyy(ymd(new Date()))}` : '-all';
+      a.href = url; a.download = `Magazine-payments-report${span}.xlsx`;
       document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 2000);
-    } catch { flash('err', 'Network error. Please try again.'); } finally { setBusy(false); }
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+    } catch (e: any) { flash('err', e?.message || 'Could not make the report.'); } finally { setBusy(false); }
   }
 
-  const periodText = from || to ? `${from ? dateLabel(from) : 'the start'} to ${to ? dateLabel(to) : 'today'}` : 'all dates';
-  const pages = Math.max(1, Math.ceil(total / LIMIT));
+  const pages = Math.max(1, Math.ceil(total / limit));
+  const showFrom = total === 0 ? 0 : (page - 1) * limit + 1;
+  const showTo = Math.min(total, page * limit);
   const filtered = !!(category || status || plan || membership || payHow || qNow);
   const buckets = summary ? makeBuckets(summary.daily, gran, from, to) : [];
   const catList = DELIVERIES;
@@ -205,10 +275,10 @@ export default function MagazinePayments() {
             <h1 className="pdx-title">Magazine payments</h1>
             <p className="pdx-sub" style={{ fontSize: 14 }}>Every magazine subscription with the subscriber, plan, delivery address, dates and Razorpay ids. Money is counted only when a payment is paid.</p>
           </div>
-          <button type="button" className="pdx-btn" onClick={download} disabled={busy || loading || total === 0}>{busy ? 'Preparing...' : 'Download CSV'}</button>
+          <button type="button" className="pdx-btn" onClick={download} disabled={busy || loading || total === 0}>{busy ? 'Preparing the report...' : 'Download report (Excel)'}</button>
         </div>
 
-        {/* Filters */}
+        {/* Period */}
         <div className="pdx-card" style={{ marginBottom: 14 }}>
           <div className="pdx-row" style={{ marginBottom: 12 }} role="group" aria-label="Payment date">
             {([['month', 'This month'], ['30', 'Last 30 days'], ['year', 'This year'], ['all', 'All time'], ['custom', 'Choose dates']] as [Preset, string][]).map(([id, label]) => (
@@ -218,269 +288,269 @@ export default function MagazinePayments() {
           <div className="pdx-row">
             <div><label className="pdx-lbl" htmlFor="sf">From</label><input id="sf" className="pdx-inp" type="date" value={from} max={to || undefined} onChange={(e) => { setFrom(e.target.value); setPreset('custom'); setPage(1); }} /></div>
             <div><label className="pdx-lbl" htmlFor="st">To</label><input id="st" className="pdx-inp" type="date" value={to} min={from || undefined} onChange={(e) => { setTo(e.target.value); setPreset('custom'); setPage(1); }} /></div>
-            <div>
-              <label className="pdx-lbl" htmlFor="sc">Delivery</label>
-              <select id="sc" className="pdx-inp" value={category} onChange={(e) => { setCategory(e.target.value); setPage(1); }}>
-                <option value="">Print and digital</option>
-                {catList.map((c) => <option key={c} value={c}>{catLabel(c)}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="pdx-lbl" htmlFor="ss">Payment</label>
-              <select id="ss" className="pdx-inp" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
-                <option value="">All payments</option>
-                {Object.entries(STATUS_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="pdx-lbl" htmlFor="sm">Subscription</label>
-              <select id="sm" className="pdx-inp" value={membership} onChange={(e) => { setMembership(e.target.value); setPage(1); }}>
-                <option value="">Active and expired</option>
-                <option value="ACTIVE">Active</option>
-                <option value="EXPIRED">Expired</option>
-              </select>
-            </div>
-            <div>
-              <label className="pdx-lbl" htmlFor="sd">Paid how</label>
-              <select id="sd" className="pdx-inp" value={payHow} onChange={(e) => { setPayHow(e.target.value); setPage(1); }}>
-                <option value="">Online and offline</option>
-                <option value="online">Online</option>
-                <option value="offline">Offline</option>
-              </select>
-            </div>
-            <div style={{ minWidth: 0, maxWidth: 260 }}>
-              <label className="pdx-lbl" htmlFor="sv">Plan</label>
-              <select id="sv" className="pdx-inp" style={{ width: '100%' }} value={plan} onChange={(e) => { setPlan(e.target.value); setPage(1); }}>
-                <option value="">All plans</option>
-                {(summary?.plans || []).map((n) => <option key={n} value={n}>{n}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="pdx-lbl" htmlFor="so">Sort by</label>
-              <select id="so" className="pdx-inp" value={sort} onChange={(e) => { setSort(e.target.value); setPage(1); }}>
-                {SORTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-              </select>
-            </div>
-            <div style={{ flex: 1, minWidth: 240 }}>
-              <label className="pdx-lbl" htmlFor="sq">Search subscribers and payments</label>
-              <input id="sq" className="pdx-inp" style={{ width: '100%' }} value={q} maxLength={80} placeholder="Name, phone, email, city, pincode, receipt, Razorpay id or plan" onChange={(e) => setQ(e.target.value)} />
-            </div>
-            {filtered && <button type="button" className="pdx-btn" onClick={() => { setCategory(''); setStatus(''); setPlan(''); setMembership(''); setPayHow(''); setQ(''); setQNow(''); setPage(1); }}>Clear filters</button>}
           </div>
         </div>
 
         {err ? (
-          <div role="alert" className="pdx-err">{err} <button type="button" className="pdx-link" onClick={load}>Try again</button></div>
+          <div role="alert" className="pdx-err">{err} <button type="button" className="pdx-link" onClick={retry}>Try again</button></div>
         ) : (
-          <div className={loading && summary ? 'pdx-busy' : ''} aria-busy={loading}>
-            <Group title="Summary" note={`Money counted only when a payment is paid. Period: ${periodText}.`} />
-            <div className="pdx-grid pdx-g-kpi">
-              <div className="pdx-card pdx-hero">
-                <p className="pdx-sub">Collected</p>
-                <p className="pdx-big">{summary ? inr(summary.paid.amount) : '...'}</p>
-                {summary && <Delta now={summary.paid.amount} before={summary.previous} />}
-                <p className="pdx-sub" style={{ marginTop: 10 }}>{summary ? `${summary.paid.count} paid subscriptions` : ''}</p>
+          <div>
+            <div className={loadingSum && summary ? 'pdx-busy' : ''} aria-busy={loadingSum}>
+              <Group title="Summary" note="Money counted only when a payment is paid." />
+              <div className="pdx-grid pdx-g-kpi">
+                <div className="pdx-card pdx-hero">
+                  <p className="pdx-sub">Collected</p>
+                  <p className="pdx-big">{summary ? inr(summary.paid.amount) : '...'}</p>
+                  {summary && <Delta now={summary.paid.amount} before={summary.previous} />}
+                  <p className="pdx-sub" style={{ marginTop: 10 }}>{summary ? `${summary.paid.count} paid subscriptions` : ''}</p>
+                </div>
+                <Stat label="Subscribers" value={summary ? String(summary.payers) : '...'} sub={summary && summary.payers ? `${inr(summary.paid.amount / summary.payers)} on average each` : ''} />
+                <Stat label="Average subscription" value={summary ? inr(summary.average) : '...'} sub="of the paid subscriptions" />
+                <Stat label="Active subscriptions" value={summary ? String(summary.subscriptions.active) : '...'} sub={summary ? `${summary.subscriptions.toPost} to post, ${summary.subscriptions.endingSoon} ending in 30 days` : ''} color="#15803d" />
               </div>
-              <Stat label="Subscribers" value={summary ? String(summary.payers) : '...'} sub={summary && summary.payers ? `${inr(summary.paid.amount / summary.payers)} on average each` : ''} />
-              <Stat label="Average subscription" value={summary ? inr(summary.average) : '...'} sub="of the paid subscriptions" />
-              <Stat label="Active subscriptions" value={summary ? String(summary.subscriptions.active) : '...'} sub={summary ? `${summary.subscriptions.toPost} to post, ${summary.subscriptions.endingSoon} ending in 30 days` : ''} color="#15803d" />
-            </div>
-            <div className="pdx-grid" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,200px),1fr))' }}>
-              {(summary?.categories || []).map((c) => <Stat key={c.category} label={catLabel(c.category)} value={inr(c.paid.amount)} sub={`${c.paid.count} paid`} color={cc(c.category)} />)}
-              <Stat label="Pending" value={summary ? inr(summary.pending.amount) : '...'} sub={summary ? `${summary.pending.count} not completed` : ''} color={STATUS_COLOR.PENDING} />
-              <Stat label="Failed" value={summary ? String(summary.failed.count) : '...'} sub={summary ? `${inr(summary.failed.amount)} not received` : ''} color={STATUS_COLOR.FAILED} />
-            </div>
+              <div className="pdx-grid" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,200px),1fr))' }}>
+                {(summary?.categories || []).map((c) => <Stat key={c.category} label={catLabel(c.category)} value={inr(c.paid.amount)} sub={`${c.paid.count} paid`} color={cc(c.category)} />)}
+                <Stat label="Pending" value={summary ? inr(summary.pending.amount) : '...'} sub={summary ? `${summary.pending.count} not completed` : ''} color={STATUS_COLOR.PENDING} />
+                <Stat label="Failed" value={summary ? String(summary.failed.count) : '...'} sub={summary ? `${inr(summary.failed.amount)} not received` : ''} color={STATUS_COLOR.FAILED} />
+              </div>
 
-            <Group title="Collections" />
-            <div className="pdx-grid pdx-g-main">
-              <section className="pdx-card" aria-label="Revenue flow">
-                <div className="pdx-head">
-                  <div><h3>Revenue flow</h3><p className="pdx-sub">Money collected by category</p></div>
-                  <div className="pdx-row">
+              <Group title="Collections" />
+              <div className="pdx-grid pdx-g-main">
+                <section className="pdx-card" aria-label="Revenue flow">
+                  <div className="pdx-head">
+                    <div><h3>Revenue flow</h3><p className="pdx-sub">Money collected by category</p></div>
                     <div className="pdx-row" role="group" aria-label="Group by">
                       {(['day', 'week', 'month'] as Gran[]).map((g) => <button key={g} type="button" className={`pdx-btn${gran === g ? ' on' : ''}`} aria-pressed={gran === g} onClick={() => setGran(g)}>{g === 'day' ? 'Daily' : g === 'week' ? 'Weekly' : 'Monthly'}</button>)}
                     </div>
-                    <div className="pdx-row" role="group" aria-label="Chart style">
-                      {(['bars', 'area'] as const).map((m) => <button key={m} type="button" className={`pdx-btn${mode === m ? ' on' : ''}`} aria-pressed={mode === m} onClick={() => setMode(m)}>{m === 'bars' ? 'Bars' : 'Line'}</button>)}
-                    </div>
                   </div>
+                  <RevenueChart data={buckets} mode={mode} series={SERIES} />
+                  {/* Bars / Line sit below the graph */}
+                  <div className="pdx-row" style={{ justifyContent: 'center', marginTop: 12 }} role="group" aria-label="Chart style">
+                    {(['bars', 'area'] as const).map((m) => <button key={m} type="button" className={`pdx-btn${mode === m ? ' on' : ''}`} aria-pressed={mode === m} onClick={() => setMode(m)}>{m === 'bars' ? 'Bars' : 'Line'}</button>)}
+                  </div>
+                  {mode === 'bars' ? <div className="pdx-key">{SERIES.map((s) => <span key={s.key}><i style={{ background: s.color }} />{s.label}</span>)}</div> : <div className="pdx-key">The line shows all categories together. Hover a point for the split.</div>}
+                </section>
+                <div style={{ display: 'grid', gap: 14, alignContent: 'start' }}>
+                  <section className="pdx-card" aria-label="Categories">
+                    <h3>Categories</h3>
+                    <p className="pdx-sub" style={{ marginBottom: 10 }}>Share of the money collected</p>
+                    <Donut parts={catParts} centerTop="Total" centerBottom={summary ? short(summary.paid.amount) : '...'} label="Money collected by category" />
+                  </section>
+                  <section className="pdx-card" aria-label="Health">
+                    <h3>Health</h3>
+                    <p className="pdx-sub" style={{ marginBottom: 10 }}>How many attempts ended well</p>
+                    <Donut parts={healthParts} centerTop="Success" centerBottom={summary ? `${summary.successRate}%` : '...'} label="Share of paid, pending and failed bookings" />
+                    {summary && <p className="pdx-sub" style={{ marginTop: 10 }}>{repeatPct}% of subscribers paid more than once ({summary.repeatSubscribers} of {summary.payers}).</p>}
+                  </section>
                 </div>
-                <RevenueChart data={buckets} mode={mode} series={SERIES} />
-                {mode === 'bars' ? <div className="pdx-key">{SERIES.map((s) => <span key={s.key}><i style={{ background: s.color }} />{s.label}</span>)}</div> : <div className="pdx-key">The line shows all categories together. Hover a point for the split.</div>}
-              </section>
-              <div style={{ display: 'grid', gap: 14, alignContent: 'start' }}>
-                <section className="pdx-card" aria-label="Categories">
-                  <h3>Categories</h3>
-                  <p className="pdx-sub" style={{ marginBottom: 10 }}>Share of the money collected</p>
-                  <Donut parts={catParts} centerTop="Total" centerBottom={summary ? short(summary.paid.amount) : '...'} label="Money collected by category" />
+              </div>
+              <div className="pdx-grid pdx-g-2">
+                <section className="pdx-card" aria-label="Running total">
+                  <h3>Running total</h3>
+                  <p className="pdx-sub" style={{ marginBottom: 8 }}>How the money adds up through the period</p>
+                  <LineChart label="Running total collected" points={running} />
                 </section>
-                <section className="pdx-card" aria-label="Payment health">
-                  <h3>Payment health</h3>
-                  <p className="pdx-sub" style={{ marginBottom: 10 }}>How many attempts ended well</p>
-                  <Donut parts={healthParts} centerTop="Success" centerBottom={summary ? `${summary.successRate}%` : '...'} label="Share of paid, pending and failed bookings" />
-                  {summary && <p className="pdx-sub" style={{ marginTop: 10 }}>{repeatPct}% of subscribers paid more than once ({summary.repeatSubscribers} of {summary.payers}).</p>}
+                <section className="pdx-card" aria-label="Plan length">
+                  <h3>Plan length</h3>
+                  <p className="pdx-sub" style={{ marginBottom: 8 }}>Paid subscriptions by number of months</p>
+                  <Columns label="Paid subscriptions by plan length" items={(summary?.durations || []).map((r) => ({ label: `${r.months} month${r.months === 1 ? '' : 's'}`, value: r.count, note: `${r.count} subscription${r.count === 1 ? '' : 's'}, ${inr(r.amount)}` }))} />
                 </section>
               </div>
-            </div>
-            <div className="pdx-grid pdx-g-2">
-              <section className="pdx-card" aria-label="Running total">
-                <h3>Running total</h3>
-                <p className="pdx-sub" style={{ marginBottom: 8 }}>How the money adds up through the period</p>
-                <LineChart label="Running total collected" points={running} />
-              </section>
-              <section className="pdx-card" aria-label="Plan length">
-                <h3>Plan length</h3>
-                <p className="pdx-sub" style={{ marginBottom: 8 }}>Paid subscriptions by number of months</p>
-                <Columns label="Paid subscriptions by plan length" items={(summary?.durations || []).map((r) => ({ label: `${r.months} month${r.months === 1 ? '' : 's'}`, value: r.count, note: `${r.count} subscription${r.count === 1 ? '' : 's'}, ${inr(r.amount)}` }))} />
-              </section>
-            </div>
 
-            <Group title="Plans and subscribers" />
-            <section className="pdx-card" aria-label="Plan-wise report" style={{ marginBottom: 14 }}>
-              <div className="pdx-head">
-                <div><h3>Plan-wise report</h3><p className="pdx-sub">Every plan with its subscriptions and money. Press View to see its payments.</p></div>
-                <button type="button" className="pdx-btn" disabled={!summary || summary.planTable.length === 0} onClick={() => {
-                  if (!summary) return;
-                  const head = ['Plan', 'Delivery', 'Attempts', 'Paid', 'Collected (INR)', 'Failed', 'Pending', 'Success rate %'];
-                  const lines = [head.map(csvCell).join(',')].concat(summary.planTable.map((t) => [t.plan, catLabel(t.category), t.bookings, t.paid, t.amount, t.failed, t.pending, t.bookings ? Math.round((t.paid / t.bookings) * 100) : 0].map(csvCell).join(',')));
-                  const url = URL.createObjectURL(new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' }));
-                  const a = document.createElement('a'); a.href = url; a.download = `plan-wise-report-${ymd(new Date())}.csv`; document.body.appendChild(a); a.click(); a.remove();
-                  setTimeout(() => URL.revokeObjectURL(url), 2000);
-                }}>Download report</button>
-              </div>
-              <div className="pdx-tablewrap">
-                <table style={{ minWidth: 760 }}>
-                  <thead><tr>{['Plan', 'Delivery', 'Attempts', 'Paid', 'Collected', 'Failed', 'Success', ''].map((h, i) => <th key={i} scope="col" style={{ textAlign: i >= 2 && i <= 5 ? 'right' : 'left' }}>{h}</th>)}</tr></thead>
-                  <tbody>
-                    {(!summary || summary.planTable.length === 0) && <tr><td colSpan={9} className="pdx-empty">No subscriptions in this period.</td></tr>}
-                    {summary?.planTable.map((t) => {
-                      const rate = t.bookings ? Math.round((t.paid / t.bookings) * 100) : 0;
-                      return (
-                        <tr key={`${t.category}-${t.plan}`}>
-                          <td style={{ fontWeight: 700, maxWidth: 260 }}>{t.plan}</td>
-                          <td><span className="pdx-pill"><i style={{ background: cc(t.category) }} />{catLabel(t.category)}</span></td>
-                          <td style={{ textAlign: 'right' }}>{t.bookings}</td>
-                          <td style={{ textAlign: 'right' }}>{t.paid}</td>
-                          <td style={{ textAlign: 'right', fontWeight: 800, whiteSpace: 'nowrap' }}>{inr(t.amount)}</td>
-                          <td style={{ textAlign: 'right', color: t.failed ? STATUS_COLOR.FAILED : undefined }}>{t.failed}</td>
-                          <td style={{ minWidth: 110 }}>
-                            <div className="pdx-bar" role="img" aria-label={`${rate}% of attempts were paid`}><div style={{ width: `${rate}%`, background: rate >= 70 ? STATUS_COLOR.PAID : rate >= 40 ? STATUS_COLOR.PENDING : STATUS_COLOR.FAILED }} /></div>
-                            <p className="pdx-sub">{rate}%</p>
-                          </td>
-                          <td><button type="button" className="pdx-link" onClick={() => {
-                            setPlan(t.plan); setCategory(t.category); setPage(1);
-                            setTimeout(() => tableRef.current?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }), 50);
-                          }}>View</button></td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </section>
+              <Group title="Plans and subscribers" />
+              <section className="pdx-card" aria-label="Plan-wise report" style={{ marginBottom: 14 }}>
+                <div className="pdx-head">
+                  <div><h3>Plan-wise report</h3><p className="pdx-sub">Every plan with its subscriptions and money. Press View to see its payments.</p></div>
+                  <button type="button" className="pdx-btn" disabled={!summary || summary.planTable.length === 0} onClick={() => {
+                    if (!summary) return;
+                    const head = ['Plan', 'Delivery', 'Attempts', 'Paid', 'Collected (INR)', 'Failed', 'Pending', 'Success rate %'];
+                    const lines = [head.map(csvCell).join(',')].concat(summary.planTable.map((t) => [t.plan, catLabel(t.category), t.bookings, t.paid, t.amount, t.failed, t.pending, t.bookings ? Math.round((t.paid / t.bookings) * 100) : 0].map(csvCell).join(',')));
+                    const url = URL.createObjectURL(new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' }));
+                    const a = document.createElement('a'); a.href = url; a.download = `plan-wise-report-${ymd(new Date())}.csv`; document.body.appendChild(a); a.click(); a.remove();
+                    setTimeout(() => URL.revokeObjectURL(url), 2000);
+                  }}>Download report</button>
+                </div>
+                <div className="pdx-tablewrap">
+                  <table style={{ minWidth: 760 }}>
+                    <thead><tr>{['Plan', 'Delivery', 'Attempts', 'Paid', 'Collected', 'Failed', 'Success', ''].map((h, i) => <th key={i} scope="col" style={{ textAlign: i >= 2 && i <= 5 ? 'right' : 'left' }}>{h}</th>)}</tr></thead>
+                    <tbody>
+                      {(!summary || summary.planTable.length === 0) && <tr><td colSpan={8} className="pdx-empty">No subscriptions in this period.</td></tr>}
+                      {summary?.planTable.map((t) => {
+                        const rate = t.bookings ? Math.round((t.paid / t.bookings) * 100) : 0;
+                        return (
+                          <tr key={`${t.category}-${t.plan}`}>
+                            <td style={{ fontWeight: 700, maxWidth: 260 }}>{t.plan}</td>
+                            <td><span className="pdx-pill"><i style={{ background: cc(t.category) }} />{catLabel(t.category)}</span></td>
+                            <td style={{ textAlign: 'right' }}>{t.bookings}</td>
+                            <td style={{ textAlign: 'right' }}>{t.paid}</td>
+                            <td style={{ textAlign: 'right', fontWeight: 800, whiteSpace: 'nowrap' }}>{inr(t.amount)}</td>
+                            <td style={{ textAlign: 'right', color: t.failed ? STATUS_COLOR.FAILED : undefined }}>{t.failed}</td>
+                            <td style={{ minWidth: 110 }}>
+                              <div className="pdx-bar" role="img" aria-label={`${rate}% of attempts were paid`}><div style={{ width: `${rate}%`, background: rate >= 70 ? STATUS_COLOR.PAID : rate >= 40 ? STATUS_COLOR.PENDING : STATUS_COLOR.FAILED }} /></div>
+                              <p className="pdx-sub">{rate}%</p>
+                            </td>
+                            <td><button type="button" className="pdx-link" onClick={() => { setPlan(t.plan); setCategory(t.category); setPage(1); goToTable(); }}>View</button></td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
 
-            <div className="pdx-grid" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,440px),1fr))' }}>
-              <section className="pdx-card" aria-label="Top plans">
-                <h3>Top plans</h3>
-                <p className="pdx-sub" style={{ marginBottom: 12 }}>What brought in the most</p>
-                <HBars items={(summary?.top || []).map((t) => ({ key: `${t.category}-${t.plan}`, label: t.plan, value: t.amount, color: cc(t.category), sub: `${catLabel(t.category)} · ${t.count} subscription${t.count === 1 ? '' : 's'}` }))} />
-              </section>
-              <section className="pdx-card" aria-label="Top subscribers">
-                <h3>Top subscribers</h3>
-                <p className="pdx-sub" style={{ marginBottom: 8 }}>Press a name to see all of that subscriber&apos;s payments</p>
-                {!summary || summary.subscribers.length === 0 ? <p className="pdx-empty">Nothing yet.</p> : summary.subscribers.map((d) => (
-                  <div className="pdx-donor" key={d.devotee_id}>
-                    <span className="pdx-ava" aria-hidden="true">{(d.name || '?').trim().charAt(0).toUpperCase()}</span>
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <button type="button" className="pdx-link" style={{ textDecoration: 'none', color: 'inherit', fontWeight: 700, padding: 0, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' }}
-                        onClick={() => { setQ(d.devotee_id); setQNow(d.devotee_id); setPage(1); }}>{d.name || d.devotee_id}</button>
-                      <p className="pdx-sub">{d.count} subscription{d.count === 1 ? '' : 's'}{d.phone ? ` · ${d.phone}` : ''}</p>
-                    </div>
-                    <b>{inr(d.amount)}</b>
-                  </div>
-                ))}
-              </section>
-              <section className="pdx-card" aria-label="Subscribers by state">
-                <h3>Subscribers by state</h3>
-                <p className="pdx-sub" style={{ marginBottom: 12 }}>Money collected by where the subscriber lives</p>
-                <HBars items={(summary?.states || []).map((t) => ({ key: t.state, label: t.state, value: t.amount, color: '#e0a526', sub: `${t.count} subscription${t.count === 1 ? '' : 's'}` }))} />
-              </section>
-              <section className="pdx-card" aria-label="Subscribers by city">
-                <h3>Subscribers by city</h3>
-                <p className="pdx-sub" style={{ marginBottom: 12 }}>Money collected by city</p>
-                <HBars items={(summary?.cities || []).map((t) => ({ key: t.city, label: t.city, value: t.amount, color: '#7c3aed', sub: `${t.count} subscription${t.count === 1 ? '' : 's'}` }))} />
-              </section>
-              <section className="pdx-card" aria-label="When people pay">
-                <h3>When people pay</h3>
-                <p className="pdx-sub" style={{ marginBottom: 8 }}>Paid subscriptions by weekday and time of day (server clock)</p>
-                {summary && summary.activity.length > 0 ? <ActivityDots data={summary.activity} /> : <p className="pdx-empty">Nothing yet.</p>}
-              </section>
-              <section className="pdx-card" aria-label="Online and offline">
-                <h3>Online and offline</h3>
-                <p className="pdx-sub" style={{ marginBottom: 10 }}>How the paid subscriptions were paid</p>
-                <Donut parts={(summary?.modes || []).map((m, i) => ({ key: m.mode, label: `${m.mode === 'online' ? 'Online' : m.mode === 'offline' ? 'Offline' : m.mode} (${m.count})`, value: m.amount, color: ['#7a1c1c', '#e0a526', '#7c3aed'][i % 3] }))} centerTop="Total" centerBottom={summary ? short(summary.paid.amount) : '...'} label="Money collected online and offline" />
-              </section>
-            </div>
-
-            <Group title="Needs attention" note="Things the temple office may want to act on." />
-            <section className="pdx-card" aria-label="Renewals due" style={{ marginBottom: 14 }}>
-              <div className="pdx-head">
-                <div><h3>Renewals due</h3><p className="pdx-sub">Active subscriptions that end in the next 30 days. A call or message now keeps the subscriber.</p></div>
-                {summary && <span className="pdx-sub">{summary.subscriptions.active} active · {summary.subscriptions.expired} expired</span>}
-              </div>
-              {!summary || summary.expiring.length === 0 ? <p className="pdx-empty">No subscription ends in the next 30 days.</p> : summary.expiring.map((x) => {
-                const days = x.end_date ? Math.max(0, Math.round((new Date(`${x.end_date}T00:00:00`).getTime() - new Date(new Date().toDateString()).getTime()) / 86400000)) : null;
-                return (
-                  <div className="pdx-donor" key={x.id}>
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <p style={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{x.name || 'Unknown subscriber'} <span className="pdx-pill" style={{ marginLeft: 6 }}><i style={{ background: days !== null && days <= 7 ? STATUS_COLOR.FAILED : STATUS_COLOR.PENDING }} />{days === null ? '' : days === 0 ? 'Ends today' : `${days} day${days === 1 ? '' : 's'} left`}</span></p>
-                      <p className="pdx-sub">{x.plan} · ends {dateLabel(x.end_date)}{x.phone ? ' · ' : ''}{x.phone && (telHref(x.phone) ? <a className="pdx-link" style={{ padding: 0 }} href={telHref(x.phone)}>{x.phone}</a> : x.phone)}</p>
-                    </div>
-                    <b>{inr(x.amount)}</b>
-                  </div>
-                );
-              })}
-            </section>
-            <div className="pdx-grid pdx-g-2">
-              <section className="pdx-card" aria-label="Follow up">
-                <h3>Follow up</h3>
-                <p className="pdx-sub" style={{ marginBottom: 8 }}>Latest pending and failed subscriptions. A call can turn them into paid ones.</p>
-                {!summary || summary.followUps.length === 0 ? <p className="pdx-empty">Nothing to follow up. </p> : summary.followUps.map((f) => (
-                  <div className="pdx-donor" key={f.id}>
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <p style={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name || 'Unknown subscriber'} <span className="pdx-pill" style={{ marginLeft: 6 }}><i style={{ background: STATUS_COLOR[f.status] }} />{STATUS_LABEL[f.status]}</span></p>
-                      <p className="pdx-sub">{f.plan} · {ago(f.paid_at)}{f.phone ? ' · ' : ''}{f.phone && (telHref(f.phone) ? <a className="pdx-link" style={{ padding: 0 }} href={telHref(f.phone)}>{f.phone}</a> : f.phone)}</p>
-                    </div>
-                    <b>{inr(f.amount)}</b>
-                  </div>
-                ))}
-              </section>
-              <div style={{ display: 'grid', gap: 14, alignContent: 'start' }}>
-                <section className="pdx-card" aria-label="Health checks">
-                  <h3>Health checks</h3>
-                  <p className="pdx-sub" style={{ marginBottom: 8 }}>Records that may need a look</p>
-                  {summary && ([
-                    ['Paid subscriptions without a receipt number', summary.health.paidNoReceipt],
-                    ['Paid online without a Razorpay payment id', summary.health.paidNoPaymentId],
-                    ['Print copies without an address or pincode', summary.health.printNoAddress],
-                    ['Marked active but already past the end date', summary.health.lapsed],
-                    ['Pending for more than a day', summary.health.stuckPending],
-                  ] as [string, number][]).map(([text, n]) => (
-                    <div className="pdx-donor" key={text}>
-                      <span style={{ flex: 1, fontSize: 14 }}>{text}</span>
-                      <span className="pdx-pill"><i style={{ background: n ? STATUS_COLOR.PENDING : STATUS_COLOR.PAID }} />{n ? n : 'All good'}</span>
+              <div className="pdx-grid" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,440px),1fr))' }}>
+                <section className="pdx-card" aria-label="Top plans">
+                  <h3>Top plans</h3>
+                  <p className="pdx-sub" style={{ marginBottom: 12 }}>What brought in the most</p>
+                  <HBars items={(summary?.top || []).map((t) => ({ key: `${t.category}-${t.plan}`, label: t.plan, value: t.amount, color: cc(t.category), sub: `${catLabel(t.category)} · ${t.count} subscription${t.count === 1 ? '' : 's'}` }))} />
+                </section>
+                <section className="pdx-card" aria-label="Top subscribers">
+                  <h3>Top subscribers</h3>
+                  <p className="pdx-sub" style={{ marginBottom: 8 }}>Press a name to see all of that subscriber&apos;s payments</p>
+                  {!summary || summary.subscribers.length === 0 ? <p className="pdx-empty">Nothing yet.</p> : summary.subscribers.map((d) => (
+                    <div className="pdx-donor" key={d.devotee_id}>
+                      <span className="pdx-ava" aria-hidden="true">{(d.name || '?').trim().charAt(0).toUpperCase()}</span>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <button type="button" className="pdx-link" style={{ textDecoration: 'none', color: 'inherit', fontWeight: 700, padding: 0, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' }}
+                          onClick={() => { setQ(d.devotee_id); setQNow(d.devotee_id); setPage(1); goToTable(); }}>{d.name || d.devotee_id}</button>
+                        <p className="pdx-sub">{d.count} subscription{d.count === 1 ? '' : 's'}{d.phone ? ` · ${d.phone}` : ''}</p>
+                      </div>
+                      <b>{inr(d.amount)}</b>
                     </div>
                   ))}
                 </section>
+                <section className="pdx-card" aria-label="Subscribers by state">
+                  <h3>Subscribers by state</h3>
+                  <p className="pdx-sub" style={{ marginBottom: 12 }}>Money collected by where the subscriber lives</p>
+                  <HBars items={(summary?.states || []).map((t) => ({ key: t.state, label: t.state, value: t.amount, color: '#e0a526', sub: `${t.count} subscription${t.count === 1 ? '' : 's'}` }))} />
+                </section>
+                <section className="pdx-card" aria-label="Subscribers by city">
+                  <h3>Subscribers by city</h3>
+                  <p className="pdx-sub" style={{ marginBottom: 12 }}>Money collected by city</p>
+                  <HBars items={(summary?.cities || []).map((t) => ({ key: t.city, label: t.city, value: t.amount, color: '#7c3aed', sub: `${t.count} subscription${t.count === 1 ? '' : 's'}` }))} />
+                </section>
+                <section className="pdx-card" aria-label="When people pay">
+                  <h3>When people pay</h3>
+                  <p className="pdx-sub" style={{ marginBottom: 8 }}>Paid subscriptions by weekday and time of day (server clock)</p>
+                  {summary && summary.activity.length > 0 ? <ActivityDots data={summary.activity} /> : <p className="pdx-empty">Nothing yet.</p>}
+                </section>
+                <section className="pdx-card" aria-label="Online and offline">
+                  <h3>Online and offline</h3>
+                  <p className="pdx-sub" style={{ marginBottom: 10 }}>How the paid subscriptions were paid</p>
+                  <Donut parts={(summary?.modes || []).map((m, i) => ({ key: m.mode, label: `${m.mode === 'online' ? 'Online' : m.mode === 'offline' ? 'Offline' : m.mode} (${m.count})`, value: m.amount, color: ['#7a1c1c', '#e0a526', '#7c3aed'][i % 3] }))} centerTop="Total" centerBottom={summary ? short(summary.paid.amount) : '...'} label="Money collected online and offline" />
+                </section>
+              </div>
+
+              <Group title="Needs attention" note="Things the temple office may want to act on." />
+              <section className="pdx-card" aria-label="Renewals due" style={{ marginBottom: 14 }}>
+                <div className="pdx-head">
+                  <div><h3>Renewals due</h3><p className="pdx-sub">Active subscriptions that end in the next 30 days. A call or message now keeps the subscriber.</p></div>
+                  {summary && <span className="pdx-sub">{summary.subscriptions.active} active · {summary.subscriptions.expired} expired</span>}
+                </div>
+                {!summary || summary.expiring.length === 0 ? <p className="pdx-empty">No subscription ends in the next 30 days.</p> : summary.expiring.map((x) => {
+                  const days = x.end_date ? Math.max(0, Math.round((new Date(`${x.end_date}T00:00:00`).getTime() - new Date(new Date().toDateString()).getTime()) / 86400000)) : null;
+                  return (
+                    <div className="pdx-donor" key={x.id}>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <p style={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{x.name || 'Unknown subscriber'} <span className="pdx-pill" style={{ marginLeft: 6 }}><i style={{ background: days !== null && days <= 7 ? STATUS_COLOR.FAILED : STATUS_COLOR.PENDING }} />{days === null ? '' : days === 0 ? 'Ends today' : `${days} day${days === 1 ? '' : 's'} left`}</span></p>
+                        <p className="pdx-sub">{x.plan} · ends {dateLabel(x.end_date)}{x.phone ? ' · ' : ''}{x.phone && (telHref(x.phone) ? <a className="pdx-link" style={{ padding: 0 }} href={telHref(x.phone)}>{x.phone}</a> : x.phone)}</p>
+                      </div>
+                      <b>{inr(x.amount)}</b>
+                    </div>
+                  );
+                })}
+              </section>
+              <div className="pdx-grid pdx-g-2">
+                <section className="pdx-card" aria-label="Follow up">
+                  <h3>Follow up</h3>
+                  <p className="pdx-sub" style={{ marginBottom: 8 }}>Latest pending and failed subscriptions. A call can turn them into paid ones.</p>
+                  {!summary || summary.followUps.length === 0 ? <p className="pdx-empty">Nothing to follow up. </p> : summary.followUps.map((f) => (
+                    <div className="pdx-donor" key={f.id}>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <p style={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name || 'Unknown subscriber'} <span className="pdx-pill" style={{ marginLeft: 6 }}><i style={{ background: STATUS_COLOR[f.status] }} />{STATUS_LABEL[f.status]}</span></p>
+                        <p className="pdx-sub">{f.plan} · {ago(f.paid_at)}{f.phone ? ' · ' : ''}{f.phone && (telHref(f.phone) ? <a className="pdx-link" style={{ padding: 0 }} href={telHref(f.phone)}>{f.phone}</a> : f.phone)}</p>
+                      </div>
+                      <b>{inr(f.amount)}</b>
+                    </div>
+                  ))}
+                </section>
+                <div style={{ display: 'grid', gap: 14, alignContent: 'start' }}>
+                  <section className="pdx-card" aria-label="Health checks">
+                    <h3>Health checks</h3>
+                    <p className="pdx-sub" style={{ marginBottom: 8 }}>Records that may need a look</p>
+                    {summary && ([
+                      ['Paid subscriptions without a receipt number', summary.health.paidNoReceipt],
+                      ['Paid online without a Razorpay payment id', summary.health.paidNoPaymentId],
+                      ['Print copies without an address or pincode', summary.health.printNoAddress],
+                      ['Marked active but already past the end date', summary.health.lapsed],
+                      ['Pending for more than a day', summary.health.stuckPending],
+                    ] as [string, number][]).map(([text, n]) => (
+                      <div className="pdx-donor" key={text}>
+                        <span style={{ flex: 1, fontSize: 14 }}>{text}</span>
+                        <span className="pdx-pill"><i style={{ background: n ? STATUS_COLOR.PENDING : STATUS_COLOR.PAID }} />{n ? n : 'All good'}</span>
+                      </div>
+                    ))}
+                  </section>
+                </div>
               </div>
             </div>
 
-            {/* The payments */}
+            {/* The payments, with their own filters */}
             <Group title="All payments" />
             <section ref={tableRef} className="pdx-card" aria-label="Magazine payments" style={{ marginBottom: 4, scrollMarginTop: 12 }}>
               <div className="pdx-head">
                 <h3>Payments</h3>
-                <span className="pdx-sub">{loading ? 'Loading...' : `${total} found`}</span>
+                <span className="pdx-sub">{loadingList ? 'Loading...' : `${total} found`}</span>
+              </div>
+              <div className="pdx-row" style={{ marginBottom: 12 }}>
+                <div>
+                  <label className="pdx-lbl" htmlFor="sc">Delivery</label>
+                  <select id="sc" className="pdx-inp" value={category} onChange={(e) => { setCategory(e.target.value); setPage(1); }}>
+                    <option value="">Print and digital</option>
+                    {catList.map((c) => <option key={c} value={c}>{catLabel(c)}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="pdx-lbl" htmlFor="ss">Payment</label>
+                  <select id="ss" className="pdx-inp" value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }}>
+                    <option value="">All payments</option>
+                    {Object.entries(STATUS_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="pdx-lbl" htmlFor="sm">Subscription</label>
+                  <select id="sm" className="pdx-inp" value={membership} onChange={(e) => { setMembership(e.target.value); setPage(1); }}>
+                    <option value="">Active and expired</option>
+                    <option value="ACTIVE">Active</option>
+                    <option value="EXPIRED">Expired</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="pdx-lbl" htmlFor="sd">Paid how</label>
+                  <select id="sd" className="pdx-inp" value={payHow} onChange={(e) => { setPayHow(e.target.value); setPage(1); }}>
+                    <option value="">Online and offline</option>
+                    <option value="online">Online</option>
+                    <option value="offline">Offline</option>
+                  </select>
+                </div>
+                <div style={{ minWidth: 0, maxWidth: 260 }}>
+                  <label className="pdx-lbl" htmlFor="sv">Plan</label>
+                  <select id="sv" className="pdx-inp" style={{ width: '100%' }} value={plan} onChange={(e) => { setPlan(e.target.value); setPage(1); }}>
+                    <option value="">All plans</option>
+                    {(summary?.plans || []).map((n) => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="pdx-lbl" htmlFor="so">Sort by</label>
+                  <select id="so" className="pdx-inp" value={sort} onChange={(e) => { setSort(e.target.value); setPage(1); }}>
+                    {SORTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                  </select>
+                </div>
+                <div style={{ flex: 1, minWidth: 240 }}>
+                  <label className="pdx-lbl" htmlFor="sq">Search subscribers and payments</label>
+                  <input id="sq" className="pdx-inp" style={{ width: '100%' }} value={q} maxLength={80} placeholder="Name, phone, email, city, pincode, receipt, Razorpay id or plan" onChange={(e) => setQ(e.target.value)} />
+                </div>
+                {filtered && <button type="button" className="pdx-btn" onClick={() => { setCategory(''); setStatus(''); setPlan(''); setMembership(''); setPayHow(''); setQ(''); setQNow(''); setPage(1); }}>Clear filters</button>}
               </div>
               <div className="pdx-tablewrap">
                 <table style={{ minWidth: 1000 }}>
@@ -488,7 +558,7 @@ export default function MagazinePayments() {
                     <tr>{['Payment date', 'Subscriber', 'Plan', 'Delivery', 'Amount', 'Payment', 'Subscription', 'Transaction id (Razorpay payment)', ''].map((h, i) => <th key={i} scope="col" style={{ textAlign: h === 'Amount' ? 'right' : 'left' }}>{h}</th>)}</tr>
                   </thead>
                   <tbody>
-                    {!loading && rows.length === 0 && (
+                    {!loadingList && rows.length === 0 && (
                       <tr><td colSpan={9} className="pdx-empty">{filtered || preset !== 'all' ? 'No magazine payments match these filters.' : 'No magazine payments yet.'}</td></tr>
                     )}
                     {rows.map((r) => {
@@ -546,13 +616,23 @@ export default function MagazinePayments() {
                   </tbody>
                 </table>
               </div>
-              {pages > 1 && (
-                <div className="pdx-row" style={{ justifyContent: 'center', alignItems: 'center', marginTop: 12 }}>
-                  <button type="button" className="pdx-btn" disabled={page <= 1 || loading} onClick={() => setPage(page - 1)}>Previous</button>
-                  <span style={{ fontSize: 14 }}>Page {page} of {pages}</span>
-                  <button type="button" className="pdx-btn" disabled={page >= pages || loading} onClick={() => setPage(page + 1)}>Next</button>
+              {/* Always shown: the count, the pages, and how many rows to a page */}
+              <div className="pdx-row" style={{ justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
+                <span style={{ fontSize: 14 }}>{loadingList ? 'Loading...' : total === 0 ? 'Showing 0 payments' : `Showing ${showFrom}-${showTo} of ${total} payment${total === 1 ? '' : 's'}`}</span>
+                <div className="pdx-row" role="navigation" aria-label="Pages" style={{ alignItems: 'center' }}>
+                  <button type="button" className="pdx-btn" disabled={page <= 1 || loadingList} onClick={() => setPage(page - 1)}>Previous</button>
+                  {pageList(page, pages).map((n, i) => n === '...'
+                    ? <span key={`gap${i}`} style={{ padding: '0 4px' }}>...</span>
+                    : <button key={n} type="button" className={`pdx-btn${n === page ? ' on' : ''}`} aria-current={n === page ? 'page' : undefined} disabled={loadingList} onClick={() => setPage(n)}>{n}</button>)}
+                  <button type="button" className="pdx-btn" disabled={page >= pages || loadingList} onClick={() => setPage(page + 1)}>Next</button>
                 </div>
-              )}
+                <div className="pdx-row" style={{ alignItems: 'center' }}>
+                  <label className="pdx-lbl" htmlFor="sl" style={{ margin: 0 }}>Rows per page</label>
+                  <select id="sl" className="pdx-inp" value={limit} onChange={(e) => { setLimit(Number(e.target.value)); setPage(1); }}>
+                    {PAGE_SIZES.map((n) => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                </div>
+              </div>
             </section>
           </div>
         )}

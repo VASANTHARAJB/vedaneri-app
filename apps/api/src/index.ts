@@ -42,6 +42,7 @@ import registersRouter from './routes/registers';
 import posRoutes from './routes/pos';
 import { roleAccess } from './middleware/roleAccess';
 import usersRouter from './routes/users';
+import dashboardsRouter from './routes/dashboards';
 
 const app = express();
 const IS_PROD = process.env.NODE_ENV === 'production';
@@ -164,6 +165,7 @@ app.use('/api/v1/registers/admin/donation80g', donation80gRouter);
 app.use('/api/v1/registers', registersRouter);
 app.use('/api/v1/pos', posRoutes);
 app.use('/api/v1/users', usersRouter);
+app.use('/api/v1/dashboards', dashboardsRouter);
 
 // 7. Global Error Handler (Must be after all routes)
 app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {

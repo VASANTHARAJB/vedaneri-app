@@ -12,7 +12,10 @@ import type { Rep } from './posReportXlsx';
 // Write the address lines, phone number and GST / registration number here, one per line. If this list is empty,
 // the address line of "Bill heading" on the New Sale screen is used instead.
 const ORG_NAME = 'SRI DAKSHINAMURTI SEVA SAMITI';
-const ORG_ADDRESS: string[] = [];
+const ORG_ADDRESS: string[] = [
+  'Chatrapatti Road, Vedapuri, Theni, Tamilnadu, India - 625 531',
+  'Phone: 97517 51910, 94430 51910',
+];
 
 const ddmmyyyy = (ymd: string) => (/^\d{4}-\d{2}-\d{2}$/.test(ymd) ? `${ymd.slice(8, 10)}${ymd.slice(5, 7)}${ymd.slice(0, 4)}` : '');
 

@@ -6,8 +6,8 @@ export interface User {
   id: string;
   email: string;
   full_name: string;
-  role: 'superadmin' | 'admin' | 'website' | 'payments' | 'registration' | 'sales' | 'priest' | 'editor' | 'devotee';
-  // The pages ticked for this login on the Users page; null or missing = the pages of the role
+  role: 'superadmin' | 'admin' | 'gm' | 'developer' | 'website' | 'payments' | 'registration' | 'sales' | 'priest' | 'editor' | 'devotee';
+  // The pages ticked for this login on the Users page; null or missing = no ticked pages yet (older logins keep their role's pages)
   page_access?: string[] | null;
 }
 

@@ -273,6 +273,23 @@ router.get('/admin/devotees/:id', async (req, res) => {
   } catch (e: any) { return fail(res, e, 'Could not load the devotee.'); }
 });
 
+// ---------- Change the communication address of one devotee ----------
+router.put('/admin/devotees/:id/address', async (req, res) => {
+  try {
+    const id = String(req.params.id || '');
+    if (!/^[A-Za-z0-9_-]{1,100}$/.test(id)) return res.status(400).json({ message: 'Not a valid devotee id.' });
+    const raw = (req.body || {}).comm_address;
+    if (raw !== undefined && raw !== null && typeof raw !== 'string') return res.status(400).json({ message: 'The address must be text.' });
+    const addr = String(raw || '').replace(/\r\n/g, '\n').replace(/[ \t]+\n/g, '\n').trim();
+    if (addr.length > 500) return res.status(400).json({ message: 'The address is too long (500 letters at most).' });
+    const [old]: any = await db.query(`SELECT comm_address FROM devotees WHERE id = ?`, [id]);
+    if (!old.length) return res.status(404).json({ message: 'Devotee not found.' });
+    await db.query(`UPDATE devotees SET comm_address = ? WHERE id = ?`, [addr, id]);
+    console.log(`[audit] Communication address of devotee ${id} changed by ${who(req).name} (${who(req).role}). Before: ${JSON.stringify(String(old[0].comm_address || ''))}`);
+    return res.json({ ok: true, comm_address: addr });
+  } catch (e: any) { return fail(res, e, 'Could not save the address.'); }
+});
+
 // ---------- PAN numbers, for 80G receipts (admin only, written to the log) ----------
 const PAN_OK = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
 const ADMIN_ROLES = ['superadmin', 'admin'];

@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { API, CSS, Notice, authHeader, failText, readJson, useFlash } from './DiscoverKit';
 import { DateRangePicker, PDX_CSS, inr, ymd } from './PaymentCharts';
 import ManualEntryForm, { PAY_LABEL, formFromEntry } from './ManualEntryForm';
-import type { ManualEntry } from './ManualEntryForm';
+import type { CampChoice, ManualEntry } from './ManualEntryForm';
 import { printForms, printHtml } from './sankalpaForm';
 import type { FormData } from './sankalpaForm';
 
@@ -25,7 +26,7 @@ type Entry = {
 };
 type Summary = { entries: number; paidEntries: number; paidAmount: number; pendingEntries: number; failedEntries: number; freeEntries: number; cancelledEntries?: number; people: number; complete: number; withDob: number; capped: boolean; extra: Record<string, number> };
 type ListResponse = { total: number; page: number; limit: number; summary: Summary; items: Entry[]; warning?: string; manualReady?: boolean };
-type Options = { items: string[]; categories: string[]; dobKept: { family: boolean; devotee: boolean }; hasEventDate: boolean; hasEndDate: boolean; peopleList: boolean };
+type Options = { catalog?: CampChoice[]; items: string[]; categories: string[]; dobKept: { family: boolean; devotee: boolean }; hasEventDate: boolean; hasEndDate: boolean; peopleList: boolean };
 type RPreset = 'today' | 'next7' | 'next30' | 'month' | 'last30' | 'year' | 'all' | 'custom';
 
 type Cfg = {
@@ -34,7 +35,7 @@ type Cfg = {
   categories: [string, string][]; basis: [Basis, string][]; defaultBasis: Basis; statuses: [string, string][]; defaultStatus: string; people: boolean;
 };
 const PAID_STATUSES: [string, string][] = [['PAID', 'Paid'], ['', 'All'], ['PENDING', 'Pending'], ['FAILED', 'Failed']];
-// Seva and donation also hold on-site entries, which can be cancelled
+// Every register also holds on-site entries, which can be cancelled
 const SD_STATUSES: [string, string][] = [...PAID_STATUSES, ['CANCELLED', 'Cancelled']];
 const CONFIG: Record<Kind, Cfg> = {
   seva: {
@@ -56,7 +57,7 @@ const CONFIG: Record<Kind, Cfg> = {
     sub: 'Every magazine subscription with the subscriber, the postal address, the plan, how it is delivered and the dates it runs.',
     presets: [['next30', 'Next 30 days'], ['month', 'This month'], ['last30', 'Last 30 days'], ['year', 'This year'], ['all', 'All time']], defaultPreset: 'all',
     sorts: [['date', 'Newest first'], ['ending', 'Ending soonest'], ['start', 'Latest start'], ['oldest', 'Oldest first'], ['amount_desc', 'Highest amount'], ['name', 'Subscriber name A-Z']], defaultSort: 'date',
-    categories: [['print', 'Print'], ['digital', 'Digital'], ['both', 'Print and digital']], basis: [['paid', 'Payment date'], ['event', 'Starts on'], ['end', 'Ends on']], defaultBasis: 'paid', statuses: PAID_STATUSES, defaultStatus: 'PAID', people: false,
+    categories: [['print', 'Print'], ['digital', 'Digital'], ['both', 'Print and digital']], basis: [['paid', 'Payment date'], ['event', 'Starts on'], ['end', 'Ends on']], defaultBasis: 'paid', statuses: SD_STATUSES, defaultStatus: 'PAID', people: false,
   },
   camp: {
     title: 'Camp register', itemLabel: 'Camp', categoryLabel: 'Registration', file: 'camp-register', search: 'Name, phone, email, camp, attendee name...',
@@ -64,7 +65,7 @@ const CONFIG: Record<Kind, Cfg> = {
     presets: [['next30', 'Next 30 days'], ['month', 'This month'], ['year', 'This year'], ['all', 'All time']], defaultPreset: 'all',
     sorts: [['date', 'Newest first'], ['event', 'Camp date, soonest first'], ['oldest', 'Oldest first'], ['amount_desc', 'Highest amount'], ['name', 'Name A-Z']], defaultSort: 'date',
     categories: [], basis: [['paid', 'Registration date'], ['event', 'Camp starts'], ['end', 'Camp ends']], defaultBasis: 'paid',
-    statuses: [['', 'All'], ['PAID', 'Paid'], ['FREE', 'No fee'], ['PENDING', 'Pending'], ['FAILED', 'Failed']], defaultStatus: '', people: true,
+    statuses: [['', 'All'], ['PAID', 'Paid'], ['FREE', 'No fee'], ['PENDING', 'Pending'], ['FAILED', 'Failed'], ['CANCELLED', 'Cancelled']], defaultStatus: '', people: true,
   },
 };
 
@@ -115,11 +116,17 @@ function factsOf(kind: Kind, e: Entry): [string, string][] {
     out.push(['Valid', range(e.event_date, e.end_date)]);
     out.push(['Payment', titleCase(e.mode || '')]);
     out.push(['Postal address', [e.address, e.city, e.state, e.pincode].filter(Boolean).join(', ')]);
+    if (e.source === 'manual') { out.push(['Entered', 'On-site at the ashram']); if (e.email) out.push(['Email', e.email]); }
   } else if (kind === 'camp') {
     out.push(['Camp dates', range(e.event_date, e.end_date)]);
     if (e.adults != null) out.push(['Adults', String(e.adults)]);
     if (e.children != null) out.push(['Children', String(e.children)]);
     out.push(['Registration', titleCase(e.category)]);
+    if (e.source === 'manual') {
+      out.push(['Entered', 'On-site at the ashram']);
+      if (e.receipt_no) out.push(['Receipt no', e.receipt_no]);
+      out.push(['Paid by', e.mode ? PAY_LABEL[e.mode] || titleCase(e.mode) : '']);
+    }
   } else if (e.source === 'manual') {
     out.push(['Entered', 'On-site at the ashram']);
     out.push(['Receipt date', fmtDay(e.entry_date || null)]);
@@ -137,6 +144,22 @@ function formOfEntry(e: Entry): FormData {
     date: e.entry_date || (e.paid_at ? e.paid_at.slice(0, 10) : ''), poojaDate: e.event_date || '', poojaDetails: e.item || '',
     people: e.members.map((m) => ({ name: m.name, place: m.place, gothram: m.gothram, nakshathiram: m.nakshathiram, rasi: m.rasi })),
   };
+}
+// A plain receipt for an on-site magazine or camp entry (seva and donation use the Sankalpa form)
+function receiptHtml(kind: Kind, e: ManualEntry): string {
+  const row = (k: string, v: unknown) => (v === '' || v == null ? '' : `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`);
+  const addr = [e.address, e.city, e.state, e.pincode].filter(Boolean).join(', ');
+  const what = kind === 'camp'
+    ? [row('Camp', e.item_title), row('Camp dates', range(e.pooja_date, e.end_date || null)), row('Adults', e.adults), row('Children', e.children)]
+    : [row('Plan', e.item_title), row('Delivery', titleCase(e.category)), row('Length', e.months ? `${e.months} month${e.months === 1 ? '' : 's'}` : ''), row('Valid', range(e.pooja_date, e.end_date || null))];
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Receipt ${esc(e.receipt_no)}</title><style>
+    body{font-family:Arial,Helvetica,sans-serif;color:#222;margin:32px;font-size:14px;max-width:640px}h1{font-size:20px;margin:0}h2{font-size:15px;margin:2px 0 18px;color:#555;font-weight:400}
+    table{width:100%;border-collapse:collapse}th,td{border-bottom:1px solid #ddd;padding:7px 4px;text-align:left;vertical-align:top}th{width:34%;color:#555;font-weight:600}
+    .amt{font-size:20px;font-weight:800}.f{margin-top:28px;color:#555;font-size:12px}@media print{body{margin:12mm}}</style></head><body>
+    <h1>Vedaneri</h1><h2>${kind === 'camp' ? 'Camp registration receipt' : 'Magazine subscription receipt'}</h2>
+    <table>${row('Receipt no', e.receipt_no)}${row('Receipt date', fmtDay(e.entry_date))}${row('Name', e.name)}${row('Mobile', e.phone)}${row('Email', e.email)}${row('Address', addr)}${what.join('')}
+    <tr><th>Amount received</th><td class="amt">${e.amount > 0 ? `Rs ${esc(e.amount)}` : 'No fee'}</td></tr>${row('Paid by', PAY_LABEL[e.payment_mode] || e.payment_mode)}${row('Reference', e.payment_ref)}</table>
+    <p class="f">Received with thanks. Printed ${esc(new Date().toLocaleString('en-IN'))}</p></body></html>`;
 }
 const amountText = (e: Entry) => (e.status === 'FREE' ? 'No fee' : inr(e.amount));
 const esc = (v: unknown) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
@@ -196,8 +219,16 @@ const RG_CSS = `
 @media(max-width:560px){.rg-head{flex-wrap:wrap}.rg-side{text-align:left;width:100%}}
 `;
 
-export default function RegisterPage({ kind }: { kind: Kind }) {
-  const cfg = CONFIG[kind];
+// mode 'offline' is the Offline Registration page of the sidebar: only the entries written in at the ashram, with the add button always shown
+export default function RegisterPage({ kind, mode = 'register' }: { kind: Kind; mode?: 'register' | 'offline' }) {
+  const offline = mode === 'offline';
+  const navigate = useNavigate();
+  const base = CONFIG[kind];
+  const cfg: Cfg = offline ? {
+    ...base, title: `${base.title.replace(/ register$/, '')} offline registration`, defaultBasis: 'paid', defaultStatus: '', defaultPreset: 'today',
+    presets: [['today', 'Today'], ...base.presets.filter(([id]) => id !== 'today')],
+    sub: `Counter entry for people who give or register in person. Find the devotee by mobile number or devotee id, type the amount and save. Today's entries are listed below.`,
+  } : base;
   const BASE = `${API_BASE}/registers/admin/${kind}`;
   const { notice, flash, clear } = useFlash();
   const first = cfg.defaultPreset;
@@ -219,11 +250,14 @@ export default function RegisterPage({ kind }: { kind: Kind }) {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState<'' | 'csv' | 'print'>('');
-  const [source, setSource] = useState('');
+  // The register opens on its Offline tab when it is reached from an offline page (?source=manual)
+  const [source, setSource] = useState(() => (offline ? 'manual' : new URLSearchParams(window.location.search).get('source') === 'manual' ? 'manual' : ''));
   const [form, setForm] = useState<{ id: number | null } | null>(null);
+  // The counter form on the offline pages is cleared (made again) after every save, ready for the next devotee
+  const [quickKey, setQuickKey] = useState(0);
   const [cancelFor, setCancelFor] = useState<{ id: number; reason: string; busy: boolean } | null>(null);
   const seq = useRef(0);
-  const onsite = kind === 'seva' || kind === 'donation';
+  const sankalpa = kind === 'seva' || kind === 'donation';
 
   // The search box waits a moment after typing before it asks the server
   useEffect(() => {
@@ -253,11 +287,11 @@ export default function RegisterPage({ kind }: { kind: Kind }) {
     if (status) p.set('status', status);
     if (item) p.set('item', item);
     if (category) p.set('category', category);
-    if (source && onsite) p.set('source', source);
+    if (source) p.set('source', source);
     if (qNow) p.set('q', qNow);
     p.set('sort', sort);
     return p;
-  }, [from, to, basis, membership, status, item, category, source, onsite, qNow, sort, cfg]);
+  }, [from, to, basis, membership, status, item, category, source, qNow, sort, cfg]);
 
   const load = useCallback(async () => {
     const mine = ++seq.current;
@@ -273,28 +307,39 @@ export default function RegisterPage({ kind }: { kind: Kind }) {
       if (mine === seq.current) { setErr(e?.message || 'Could not load the register.'); setData(null); }
     } finally { if (mine === seq.current) setLoading(false); }
   }, [qs, page, limit, BASE]);
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { if (!offline) load(); }, [load, offline]);
 
   const choose = (id: RPreset) => { const r = rangeFor(id); setPreset(id); setFrom(r.from); setTo(r.to); setPage(1); };
   const change = <T,>(set: (v: T) => void) => (v: T) => { set(v); setPage(1); };
 
   // A saved on-site entry was returned by the form: refresh the list, and print the Sankalpa form when asked
   async function saved(r: { id: number; receipt_no: string; edited: boolean; print: boolean }) {
-    setForm(null);
+    if (!offline || r.edited) setForm(null);
+    if (offline && !r.edited) setQuickKey((k) => k + 1);
     flash('ok', `${r.edited ? 'Changes saved' : 'Entry saved'}. Receipt ${r.receipt_no}.`);
     if (r.print) {
       try {
         const res = await fetch(`${BASE}/manual/${r.id}`, { headers: authHeader(), cache: 'no-store' });
         const j = await readJson(res);
         if (!res.ok) flash('err', failText(j, 'Saved, but the form could not be prepared for printing.'));
-        else if (!(await printForms([formFromEntry(j as ManualEntry)]))) flash('err', 'Saved, but the form could not be prepared for printing. Use "Print sankalpa form" on the entry.');
+        else if (sankalpa) { if (!(await printForms([formFromEntry(j as ManualEntry)]))) flash('err', 'Saved, but the form could not be prepared for printing. Use "Print sankalpa form" on the entry.'); }
+        else if (!printHtml(receiptHtml(kind, j as ManualEntry))) flash('err', 'Saved, but the receipt could not be prepared for printing. Use "Print receipt" on the entry.');
       } catch { flash('err', 'Saved, but the form could not be prepared for printing.'); }
     }
-    load();
+    if (!offline) load();
   }
 
   async function printForm(e: Entry) {
     if (!(await printForms([formOfEntry(e)]))) flash('err', 'The form could not be prepared for printing. Please try again.');
+  }
+
+  async function printReceipt(e: Entry) {
+    try {
+      const res = await fetch(`${BASE}/manual/${e.id}`, { headers: authHeader(), cache: 'no-store' });
+      const j = await readJson(res);
+      if (!res.ok) { flash('err', failText(j, 'The receipt could not be prepared.')); return; }
+      if (!printHtml(receiptHtml(kind, j as ManualEntry))) flash('err', 'The receipt could not be prepared for printing. Please try again.');
+    } catch { flash('err', 'Network error. Please try again.'); }
   }
 
   async function cancelEntry() {
@@ -400,14 +445,24 @@ export default function RegisterPage({ kind }: { kind: Kind }) {
             <p className="pdx-sub" style={{ fontSize: 14, maxWidth: 760 }}>{cfg.sub}</p>
           </div>
           <div className="pdx-row">
-            {onsite && source === 'manual' && <button type="button" className="pdx-btn" style={{ background: '#1d4ed8', color: '#fff', borderColor: '#1d4ed8' }} onClick={() => setForm({ id: null })}>+ Add on-site entry</button>}
-            <button type="button" className="pdx-btn" onClick={printRegister} disabled={!!busy || loading || total === 0}>{busy === 'print' ? 'Preparing...' : 'Print register'}</button>
-            <button type="button" className="pdx-btn" onClick={download} disabled={!!busy || loading || total === 0}>{busy === 'csv' ? 'Preparing...' : 'Download CSV'}</button>
+            {!offline && source === 'manual' && <button type="button" className="pdx-btn" style={{ background: '#1d4ed8', color: '#fff', borderColor: '#1d4ed8' }} onClick={() => setForm({ id: null })}>+ Add on-site entry</button>}
+            {!offline && <button type="button" className="pdx-btn" onClick={printRegister} disabled={!!busy || loading || total === 0}>{busy === 'print' ? 'Preparing...' : 'Print register'}</button>}
+            {!offline && <button type="button" className="pdx-btn" onClick={download} disabled={!!busy || loading || total === 0}>{busy === 'csv' ? 'Preparing...' : 'Download CSV'}</button>}
           </div>
         </div>
 
+        {offline && <ManualEntryForm key={quickKey} inline kind={kind} apiBase={API_BASE} editId={null} items={options?.items || []} catalog={options?.catalog || []} onClose={() => setQuickKey((k) => k + 1)} onSaved={saved} />}
+
+        {/* The offline pages are only the entry form. The list, the filters, correcting and cancelling are on the register page (Offline tab). */}
+        {offline && (
+          <p className="pdx-sub" style={{ margin: '0 0 12px' }}>
+            To see, correct, cancel or print the entries, open the{' '}
+            <button type="button" className="pdx-link" onClick={() => navigate(`/${kind}-register?source=manual`)}>{base.title}</button>.
+          </p>
+        )}
+        {!offline && (<>
         {/* Filters */}
-        {onsite && (
+        {!offline && (
           <div className="rg-tabs" role="tablist" aria-label="Online or offline registrations">
             {([['', 'All registrations', 'Online and offline together'], ['online', 'Online', 'Booked on the website'], ['manual', 'Offline (on-site)', 'Written in at the ashram']] as [string, string, string][]).map(([v, l, d]) => (
               <button key={v || 'all'} type="button" role="tab" aria-selected={source === v} className={`rg-tab${source === v ? ' on' : ''}${v === 'manual' ? ' off' : ''}`} onClick={() => change(setSource)(v)}>
@@ -416,6 +471,8 @@ export default function RegisterPage({ kind }: { kind: Kind }) {
             ))}
           </div>
         )}
+        <details className="rg-fold" open={!offline}>
+          <summary style={{ display: offline ? 'list-item' : 'none', cursor: 'pointer', fontWeight: 700, color: '#1d4ed8', margin: '0 0 10px' }}>Filters and search</summary>
         <div className="pdx-card rg-filters" style={{ marginBottom: 14 }}>
           <div className="pdx-tools">
             <div className="pdx-presets" role="group" aria-label="Period">
@@ -474,6 +531,7 @@ export default function RegisterPage({ kind }: { kind: Kind }) {
             </div>
           </div>
         </div>
+        </details>
 
         {err && <div className="pdx-err" role="alert" style={{ marginBottom: 14 }}>{err} <button type="button" className="pdx-link" onClick={load}>Try again</button></div>}
 
@@ -492,7 +550,7 @@ export default function RegisterPage({ kind }: { kind: Kind }) {
 
         {/* The register */}
         <div className={loading ? 'pdx-busy' : undefined} aria-busy={loading}>
-          {!loading && !err && total === 0 && <div className="pdx-card"><p className="pdx-empty">{source === 'manual' ? 'No offline entries for these filters. Use "+ Add on-site entry" to write one in, or try "All time".' : 'No entries for these filters. Try "All time" or set the payment to "All".'}</p></div>}
+          {!loading && !err && total === 0 && <div className="pdx-card"><p className="pdx-empty">{source === 'manual' ? `No offline entries for these filters. Use "+ Add on-site entry" to write one in, or try "All time".` : 'No entries for these filters. Try "All time" or set the payment to "All".'}</p></div>}
           <div className="rg-list">
             {(data?.items || []).map((e, i) => (
               <article key={`${e.source || 'online'}-${e.id}`} className={`rg-entry${e.source === 'manual' ? ' off' : ''}`} aria-label={`Entry ${offset + i + 1}: ${e.item}`}>
@@ -503,7 +561,7 @@ export default function RegisterPage({ kind }: { kind: Kind }) {
                       <span>{e.item || cfg.itemLabel}</span>
                       {e.category && <span className="pdx-pill">{titleCase(e.category)}</span>}
                       <span className="pdx-pill"><i style={{ background: STATUS_COLOR[e.status] }} />{STATUS_LABEL[e.status]}</span>
-                      {e.source === 'manual' ? <span className="pdx-pill rg-offpill"><i style={{ background: '#1d4ed8' }} />Offline (on-site)</span> : onsite && <span className="pdx-pill"><i style={{ background: '#15803d' }} />Online</span>}
+                      {e.source === 'manual' ? <span className="pdx-pill rg-offpill"><i style={{ background: '#1d4ed8' }} />Offline (on-site)</span> : !offline && <span className="pdx-pill"><i style={{ background: '#15803d' }} />Online</span>}
                       {kind === 'magazine' && (e.membership === 'ACTIVE' || e.membership === 'EXPIRED') && <span className="pdx-pill"><i style={{ background: e.membership === 'ACTIVE' ? '#15803d' : '#b45309' }} />{titleCase(e.membership)}</span>}
                     </div>
                     <p className="rg-who">
@@ -515,7 +573,7 @@ export default function RegisterPage({ kind }: { kind: Kind }) {
                   </div>
                   <div className="rg-side">
                     <div className="rg-amt" style={e.status === 'CANCELLED' ? { textDecoration: 'line-through', color: '#64748b' } : undefined}>{amountText(e)}</div>
-                    {kind !== 'camp' && <div>Receipt {e.receipt_no || '-'}</div>}
+                    {(kind !== 'camp' || e.receipt_no) && <div>Receipt {e.receipt_no || '-'}</div>}
                     {kind === 'seva' && e.event_date && <div>Seva date <b style={{ color: '#3b0d0d' }}>{fmtDay(e.event_date)}</b></div>}
                     {e.paid_at && <div>{kind === 'camp' ? 'Registered' : 'Paid'} {fmtStamp(e.paid_at)}</div>}
                   </div>
@@ -545,9 +603,10 @@ export default function RegisterPage({ kind }: { kind: Kind }) {
                       ))}
                     </ul>
                   )}
-                  {onsite && e.status !== 'CANCELLED' && (
+                  {(sankalpa || e.source === 'manual') && e.status !== 'CANCELLED' && (
                     <div className="rg-act">
-                      <button type="button" className="pdx-btn" onClick={() => printForm(e)}>Print sankalpa form</button>
+                      {sankalpa && <button type="button" className="pdx-btn" onClick={() => printForm(e)}>Print sankalpa form</button>}
+                      {e.source === 'manual' && !sankalpa && <button type="button" className="pdx-btn" onClick={() => printReceipt(e)}>Print receipt</button>}
                       {e.source === 'manual' && <button type="button" className="pdx-btn" onClick={() => setForm({ id: e.id })}>Correct</button>}
                       {e.source === 'manual' && <button type="button" className="pdx-btn" onClick={() => setCancelFor({ id: e.id, reason: '', busy: false })}>Cancel entry</button>}
                     </div>
@@ -583,8 +642,9 @@ export default function RegisterPage({ kind }: { kind: Kind }) {
             </div>
           </div>
         )}
+        </>)}
       </div>
-      {form && onsite && <ManualEntryForm kind={kind} apiBase={API_BASE} editId={form.id} items={options?.items || []} onClose={() => setForm(null)} onSaved={saved} />}
+      {form && <ManualEntryForm kind={kind} apiBase={API_BASE} editId={form.id} items={options?.items || []} catalog={options?.catalog || []} onClose={() => setForm(null)} onSaved={saved} />}
     </div>
   );
 }

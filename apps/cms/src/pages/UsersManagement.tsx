@@ -1,17 +1,20 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { API_BASE_URL } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { ALL_PAGES, PAGE_GROUPS, ROLE_HELP, ROLE_LABEL, isAdminRole, roleDefaultPages } from '../lib/access';
+import { ALL_PAGES, PAGE_GROUPS, ROLE_HELP, ROLE_LABEL, currentPages, isSuper, roleDefaultPages } from '../lib/access';
 
 const API = `${API_BASE_URL}/users`;
 
 interface Row {
   id: string; email: string; phone: string | null; full_name: string; role: string; is_active: number | boolean;
   created_at: string; updated_at: string;
-  page_access?: string[] | null; // the pages ticked for this login; null = the pages of its role
+  page_access?: string[] | null; // the pages ticked for this login; null = none ticked yet (an older login keeps its role's pages)
+  created_by?: string | null; created_by_name?: string; // who made this login (shown to a super admin)
 }
 
-const ROLE_OPTIONS = ['superadmin', 'admin', 'website', 'payments', 'registration', 'sales'] as const;
+const ROLE_OPTIONS = ['superadmin', 'admin', 'gm', 'developer', 'website', 'payments', 'registration', 'sales'] as const;
+// A manager (not a super admin) can make only these roles for its team
+const TEAM_ROLE_OPTIONS = ['admin', 'website', 'payments', 'registration', 'sales'];
 
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const fmtD = (s: string) => {
@@ -25,7 +28,6 @@ const active = (r: Row) => Number(r.is_active) !== 0;
 // The same list of pages, in sidebar order, so two lists can be compared
 const ordered = (l: string[]) => ALL_PAGES.filter((s) => l.includes(s));
 const sameList = (a: string[], b: string[]) => ordered(a).join('|') === ordered(b).join('|');
-const TOTAL_PAGES = ALL_PAGES.length;
 
 // A checkbox that can show "some of the group is ticked"
 function Tick({ checked, some, onChange, label, strong }: { checked: boolean; some?: boolean; onChange: (v: boolean) => void; label: string; strong?: boolean }) {
@@ -113,10 +115,22 @@ const CSS = `
 `;
 
 type FormState = { full_name: string; email: string; phone: string; role: string; password: string; is_active: boolean; pages: string[] };
-const blank: FormState = { full_name: '', email: '', phone: '', role: 'website', password: '', is_active: true, pages: roleDefaultPages('website') };
+const blank: FormState = { full_name: '', email: '', phone: '', role: 'website', password: '', is_active: true, pages: [] };
 
 export default function UsersManagement() {
   const { user: me, token } = useAuth();
+  // A super admin manages every login and can give every page. Any other login with this page ticked manages only the team it made,
+  // gives only roles for a team, and can give only the pages it can open itself.
+  const superMe = isSuper(me?.role);
+  const mine = useMemo(() => currentPages(me?.role, me?.page_access).filter((p) => p !== 'users'), [me?.role, me?.page_access]);
+  const givable = superMe ? ALL_PAGES : mine;
+  const roleOptions: string[] = superMe ? [...ROLE_OPTIONS] : TEAM_ROLE_OPTIONS;
+  const groups = useMemo(
+    () => PAGE_GROUPS.map((g) => ({ ...g, pages: g.pages.filter((p) => givable.includes(p.slug)) })).filter((g) => g.pages.length > 0),
+    [givable]
+  );
+  const TOTAL_PAGES = givable.length;
+  const [limit, setLimit] = useState(50);
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadErr, setLoadErr] = useState('');
@@ -154,7 +168,7 @@ export default function UsersManagement() {
     let data: any = {};
     try { data = await res.json(); } catch { /* no body */ }
     if (!res.ok) {
-      const e: any = new Error(data.message || (res.status === 403 ? 'Only a super admin can manage logins.' : `The server returned an error (${res.status}).`));
+      const e: any = new Error(data.message || (res.status === 403 ? 'Your login does not have access to manage logins.' : `The server returned an error (${res.status}).`));
       e.field = data.field;
       throw e;
     }
@@ -166,6 +180,7 @@ export default function UsersManagement() {
     try {
       const d = await call('GET', '');
       setRows(d.users || []);
+      if (d.limit) setLimit(Number(d.limit));
     } catch (e: any) {
       setLoadErr(e?.message || 'Could not load the users.');
     } finally {
@@ -183,24 +198,23 @@ export default function UsersManagement() {
   const activeSupers = rows.filter((r) => r.role === 'superadmin' && active(r)).length;
 
   function openAdd() {
-    setEditing(null); setForm(blank); setErrs({}); setShowPw(false); setOpen(true);
+    setEditing(null); setForm({ ...blank, role: roleOptions.includes('website') ? 'website' : roleOptions[0] }); setErrs({}); setShowPw(false); setOpen(true);
   }
   function openEdit(r: Row) {
     setEditing(r);
-    setForm({ full_name: r.full_name || '', email: r.email, phone: r.phone || '', role: r.role, password: '', is_active: active(r), pages: r.page_access?.length ? r.page_access : roleDefaultPages(r.role) });
+    setForm({ full_name: r.full_name || '', email: r.email, phone: r.phone || '', role: r.role, password: '', is_active: active(r), pages: ordered(currentPages(r.role, r.page_access).filter((p) => givable.includes(p))) });
     setErrs({}); setShowPw(false); setOpen(true);
   }
   const set = (k: keyof FormState, v: string | boolean) => { setForm((f) => ({ ...f, [k]: v })); setErrs((e) => ({ ...e, [k]: '', form: '' })); };
-  // Choosing a role always ticks that role's own pages; they can be changed afterwards
+  // Choosing a role ticks nothing: only the pages you tick are opened
   const pickRole = (role: string) => {
-    setForm((f) => ({ ...f, role, pages: roleDefaultPages(role) }));
+    setForm((f) => ({ ...f, role }));
     setErrs((e) => ({ ...e, role: '', form: '' }));
   };
-  const setPages = (pages: string[]) => { setForm((f) => ({ ...f, pages: ordered(pages) })); setErrs((e) => ({ ...e, page_access: '', form: '' })); };
+  const setPages = (pages: string[]) => { setForm((f) => ({ ...f, pages: ordered(pages.filter((p) => givable.includes(p))) })); setErrs((e) => ({ ...e, page_access: '', form: '' })); };
   const toggleSlugs = (slugs: string[], on: boolean) => setPages(on ? Array.from(new Set([...form.pages, ...slugs])) : form.pages.filter((s) => !slugs.includes(s)));
-  const fullAccess = isAdminRole(form.role);
-  // Same as the role's own pages: nothing is stored, so later changes to the role's pages apply by themselves
-  const pageValue = (): string[] | null => (fullAccess || sameList(form.pages, roleDefaultPages(form.role)) ? null : ordered(form.pages));
+  const fullAccess = superMe && isSuper(form.role);
+  const pageValue = (): string[] | null => (fullAccess ? null : ordered(form.pages));
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
@@ -213,7 +227,7 @@ export default function UsersManagement() {
     } else if (form.password && (form.password.length < 8 || !/[A-Za-z]/.test(form.password) || !/\d/.test(form.password))) {
       x.password = 'At least 8 characters, with a letter and a number';
     }
-    if (!fullAccess && form.pages.length === 0) x.page_access = 'Tick at least one page';
+    if (!fullAccess && form.pages.length === 0) x.page_access = 'Tick at least one page this login may open';
     setErrs(x);
     if (Object.keys(x).length) return;
 
@@ -225,7 +239,9 @@ export default function UsersManagement() {
         if (form.is_active !== active(editing)) body.is_active = form.is_active;
         if (form.password) body.password = form.password;
         const pv = pageValue();
-        if (JSON.stringify(pv) !== JSON.stringify(editing.page_access?.length ? editing.page_access : null)) body.page_access = pv;
+        const was = currentPages(editing.role, editing.page_access).filter((p) => givable.includes(p));
+        // Sent when the pages changed, when the role changed, or when a super admin becomes another role
+        if (form.role !== editing.role || (pv ? !sameList(pv, was) : editing.role !== 'superadmin')) body.page_access = pv;
         await call('PATCH', `/${editing.id}`, body);
         flash('ok', 'Login updated.');
       } else {
@@ -302,10 +318,14 @@ export default function UsersManagement() {
 
       <div className="head">
         <div>
-          <h1 className="title">Users</h1>
-          <p className="mut" style={{ marginTop: 2 }}>Add, change and remove the logins that can use this portal. Each role sees only its own pages.</p>
+          <h1 className="title">{superMe ? 'Users' : 'My team'}</h1>
+          <p className="mut" style={{ marginTop: 2 }}>
+            {superMe
+              ? 'Add, change and remove the logins that can use this portal. Only a super admin opens every page. Every other login opens only the pages you tick for it.'
+              : `Make logins for your own team and choose the pages each one can open. You see only the logins you made, and you can give only the pages you can open yourself. You can have up to ${limit} team logins.`}
+          </p>
         </div>
-        <button type="button" className="btn primary" onClick={openAdd}>+ New login</button>
+        <button type="button" className="btn primary" onClick={openAdd} disabled={!superMe && rows.length >= limit}>+ New login</button>
       </div>
 
       {notice && (
@@ -330,12 +350,12 @@ export default function UsersManagement() {
             <div style={{ marginTop: 16 }}><button type="button" className="btn" onClick={load}>Try again</button></div>
           </div>
         ) : shown.length === 0 ? (
-          <p className="empty mut">{rows.length === 0 ? 'No logins yet.' : 'No login matches that search.'}</p>
+          <p className="empty mut">{rows.length === 0 ? (superMe ? 'No logins yet.' : 'You have not made any team logins yet. Press New login to make the first one.') : 'No login matches that search.'}</p>
         ) : (
           <div className="tblwrap">
             <table className="tbl">
               <thead>
-                <tr><th>Name</th><th>Role</th><th>Pages</th><th>Mobile</th><th>Status</th><th>Created</th><th style={{ textAlign: 'right' }}>Actions</th></tr>
+                <tr><th>Name</th><th>Role</th><th>Pages</th><th>Mobile</th><th>Status</th><th>Created</th>{superMe && <th>Made by</th>}<th style={{ textAlign: 'right' }}>Actions</th></tr>
               </thead>
               <tbody>
                 {shown.map((r) => (
@@ -346,15 +366,18 @@ export default function UsersManagement() {
                     </td>
                     <td><span className={`pill ${r.role === 'superadmin' ? 'super' : 'role'}`}>{ROLE_LABEL[r.role] || r.role}</span></td>
                     <td>
-                      {isAdminRole(r.role)
+                      {isSuper(r.role)
                         ? <span className="pill dflt">All pages</span>
                         : r.page_access?.length
                           ? <span className="pill custom" title={ordered(r.page_access).join(', ')}>{r.page_access.length} of {TOTAL_PAGES} pages</span>
-                          : <span className="pill dflt" title="The pages that go with this role">Role default</span>}
+                          : currentPages(r.role, null).length
+                            ? <span className="pill dflt" title="This login was made before pages were ticked. It keeps its older role pages until you tick its pages.">Not set (older rule)</span>
+                            : <span className="pill off" title="Nothing is open for this login until you tick pages">No pages yet</span>}
                     </td>
                     <td>{r.phone || <span className="mut">-</span>}</td>
                     <td><span className={`pill ${active(r) ? 'on' : 'off'}`}>{active(r) ? 'Active' : 'Deactivated'}</span></td>
                     <td className="mut" style={{ whiteSpace: 'nowrap' }}>{fmtD(r.created_at)}</td>
+                    {superMe && <td className="mut">{r.created_by_name || (r.created_by ? 'Another login' : '-')}</td>}
                     <td>
                       <div className="acts">
                         <button type="button" className="btn sm" onClick={() => openEdit(r)}>Edit</button>
@@ -398,28 +421,30 @@ export default function UsersManagement() {
             <div className="fld">
               <label className="lbl" htmlFor="u-role">Role *</label>
               <select id="u-role" className={`inp${errs.role ? ' bad' : ''}`} value={form.role} onChange={(e) => pickRole(e.target.value)} disabled={!!editing && isSelf(editing)}>
-                {ROLE_OPTIONS.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
-                {editing && !ROLE_OPTIONS.includes(editing.role as typeof ROLE_OPTIONS[number]) && <option value={editing.role}>{ROLE_LABEL[editing.role] || editing.role}</option>}
+                {roleOptions.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
+                {editing && !roleOptions.includes(editing.role) && <option value={editing.role}>{ROLE_LABEL[editing.role] || editing.role}</option>}
               </select>
-              <p className="hint mut">{ROLE_HELP[form.role] || ''}</p>
+              <p className="hint mut">{superMe ? (ROLE_HELP[form.role] || '') : 'This login opens only the pages you tick below.'}</p>
               {errs.role && <span role="alert" className="err">{errs.role}</span>}
             </div>
             <div className="fld">
               <span className="lbl">Pages this login can open</span>
               {fullAccess ? (
-                <div className="alert info" style={{ marginBottom: 0 }}>{ROLE_LABEL[form.role]} opens every page, so there is nothing to tick.</div>
+                <div className="alert info" style={{ marginBottom: 0 }}>A super admin opens every page, so there is nothing to tick.</div>
               ) : (
                 <div className={`pages${errs.page_access ? ' bad' : ''}`} style={errs.page_access ? { borderColor: '#ef4444' } : undefined}>
                   <div className="pages-top">
                     <b>{form.pages.length} of {TOTAL_PAGES} pages ticked</b>
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                      <button type="button" className="btn sm" onClick={() => setPages(ALL_PAGES)}>Select all</button>
+                      <button type="button" className="btn sm" onClick={() => setPages(givable)}>Select all</button>
                       <button type="button" className="btn sm" onClick={() => setPages([])}>Clear</button>
-                      <button type="button" className="btn sm" onClick={() => setPages(roleDefaultPages(form.role))}>Use the role's pages</button>
+                      {roleDefaultPages(form.role).filter((p) => givable.includes(p)).length > 0 && (
+                        <button type="button" className="btn sm" onClick={() => setPages(roleDefaultPages(form.role))}>Tick the usual pages</button>
+                      )}
                     </div>
                   </div>
                   <div className="pages-scroll">
-                    {PAGE_GROUPS.map((g) => {
+                    {groups.map((g) => {
                       const slugs = g.pages.map((p) => p.slug);
                       const n = slugs.filter((s) => form.pages.includes(s)).length;
                       return (
@@ -434,7 +459,7 @@ export default function UsersManagement() {
                   </div>
                 </div>
               )}
-              {!fullAccess && <p className="hint mut">The server refuses the data of a page that is not ticked, not only the menu. Ticking the same pages as the role is the same as the role's default. The Users page is always for super admins only.</p>}
+              {!fullAccess && <p className="hint mut">The server refuses the data of a page that is not ticked, not only the menu.{superMe ? ' Tick Users only for a login that should make its own team logins.' : ''}</p>}
               {errs.page_access && <span role="alert" className="err">{errs.page_access}</span>}
             </div>
             <div className="fld">
